@@ -39,7 +39,7 @@ export async function getStateFromDatabase(): Promise<Record<string, unknown> | 
     users, courses, enrollments, messages, certificates, logs, invites,
     customRoles, mediaLibrary, bankAccounts, withdrawalRequests,
     assignmentSubmissions, webinarPosts, quizAttempts, learningPaths, events,
-    subscriptions, certTemplates, exams, examAttempts, payments,
+    subscriptions, certTemplates, exams, examAttempts, paymentRequests: payments,
     certDownloadHistory, cmsRow, themeRow,
   ] = await Promise.all([
     prisma.appUser.findMany(),
@@ -74,7 +74,7 @@ export async function getStateFromDatabase(): Promise<Record<string, unknown> | 
     users, courses, enrollments, messages, certificates, logs, invites,
     customRoles, mediaLibrary, bankAccounts, withdrawalRequests,
     assignmentSubmissions, webinarPosts, quizAttempts, learningPaths, events,
-    subscriptions, certTemplates, exams, examAttempts, payments,
+    subscriptions, certTemplates, exams, examAttempts, paymentRequests: payments,
     certDownloadHistory, cmsContent,
     themeSettings: themeRow?.data ?? null,
   };
