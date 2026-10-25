@@ -2,6 +2,7 @@ import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import fs from "fs";
+import zlib from "zlib";
 import cookieParser from "cookie-parser";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
@@ -68,6 +69,7 @@ interface AppState {
   certDownloadHistory: any[];
   siteNotice: any;
   paymentRequests: any[];
+  studyMaterials: any[];
 }
 
 let state: AppState = {
@@ -78,6 +80,7 @@ let state: AppState = {
   invites: [], themeSettings: null, webinarPosts: [],
   quizAttempts: [], exams: [], examAttempts: [],
   certTemplates: [], certDownloadHistory: [], siteNotice: null, paymentRequests: [],
+  studyMaterials: [],
 };
 
 function saveState(): void {
@@ -143,6 +146,7 @@ async function initializeState(): Promise<void> {
   if (!Array.isArray(state.certDownloadHistory)) state.certDownloadHistory = [];
   if (!Array.isArray(state.paymentRequests)) state.paymentRequests = [];
   if (state.siteNotice !== null && typeof state.siteNotice !== "object") state.siteNotice = null;
+  if (!Array.isArray(state.studyMaterials)) state.studyMaterials = [];
   if (state.certTemplates.length === 0) {
     state.certTemplates = [
       { id: "tmpl_default", name: "Standard Completion Certificate", style: "classic", primaryColor: "#0066ff", accentColor: "#00aaff", headerText: "Digital Manufacturing Academy", footerText: "British Council Co-funded · AIUB–BCU Partnership", signatureLabel: "Programme Director", logoEnabled: true, badgeEnabled: true, isDefault: true, createdAt: new Date().toISOString() },
@@ -226,7 +230,10 @@ async function initializeState(): Promise<void> {
         id: `u_${role}_${Date.now()}`, name, email, role,
         password: hashed, isApproved: true, suspended: false,
         subscriptionPlan: "premium", avatar: "", joinedAt: new Date().toISOString(),
-        customRoleId: null, mustChangePassword: false,
+        customRoleId: null,
+        // Seeded privileged accounts must set their own password on first login —
+        // matches prisma/seed.ts (mustChangePassword=true) and the ForceChangePassword gate.
+        mustChangePassword: true,
       });
       console.log(`[seed] Created ${role} account: ${email}`);
     }
@@ -314,8 +321,37 @@ function normalizePlan(p: unknown): "basic" | "pro" | "advanced" | null {
 }
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));
+
+// JSON body limit: 10mb everywhere, except the study-material upload route which
+// receives files as base64 payloads (25MB file ≈ 34MB base64) and gets 40mb.
+const defaultJsonParser = express.json({ limit: "10mb" });
+const uploadJsonParser = express.json({ limit: "40mb" });
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const isUpload = req.method === "POST" && req.path === "/api/study-materials";
+  (isUpload ? uploadJsonParser : defaultJsonParser)(req, res, next);
+});
 app.use(cookieParser());
+
+// ─── Forced password-change gate ───────────────────────────────────────────
+// Accounts flagged mustChangePassword (seeded privileged accounts) are refused
+// from admin endpoints and the bulk state dump until they change their password.
+// The frontend shows ForceChangePassword — this enforces it server-side too,
+// so the default seed credentials never work against admin APIs.
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const gated = req.path.startsWith("/api/admin") || req.path === "/api/db-state";
+  if (!gated) { next(); return; }
+  const session = getSession(req);
+  if (!session) { next(); return; } // let the route itself answer 401/403
+  const user = state.users.find((u: any) => u.id === session.userId);
+  if (user?.mustChangePassword) {
+    res.status(403).json({
+      error: "You must change your password before continuing.",
+      code: "PASSWORD_CHANGE_REQUIRED",
+    });
+    return;
+  }
+  next();
+});
 
 // ─── Auth Routes ──────────────────────────────────────────────────────────────
 
@@ -366,13 +402,43 @@ app.post("/api/auth/register", async (req: Request, res: Response) => {
   }
 });
 
+// ─── Login rate limiting (per IP + email) ─────────────────────────────────
+// Failed credential attempts are counted per IP+email. After 10 failures within
+// a 15-minute window every further attempt gets 429 until the window expires;
+// a successful login clears the counter. In-memory only (per process).
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const LOGIN_MAX_FAILURES = 10;
+const loginFailures = new Map<string, { count: number; resetAt: number }>();
+
+function loginKey(ip: string, email: unknown): string {
+  return `${ip}|${String(email ?? "").toLowerCase().trim()}`;
+}
+
+function recordLoginFailure(key: string): void {
+  const now = Date.now();
+  if (loginFailures.size > 5000) {
+    for (const [k, v] of loginFailures) if (v.resetAt <= now) loginFailures.delete(k);
+  }
+  const rec = loginFailures.get(key);
+  if (!rec || rec.resetAt <= now) loginFailures.set(key, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+  else rec.count += 1;
+}
+
 app.post("/api/auth/login", async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) { res.status(400).json({ error: "email and password are required" }); return; }
 
+    const key = loginKey(req.ip || req.socket.remoteAddress || "unknown", email);
+    const recent = loginFailures.get(key);
+    if (recent && recent.resetAt > Date.now() && recent.count >= LOGIN_MAX_FAILURES) {
+      res.setHeader("Retry-After", String(Math.ceil((recent.resetAt - Date.now()) / 1000)));
+      res.status(429).json({ error: "Too many failed login attempts. Please try again later." });
+      return;
+    }
+
     const user = state.users.find((u: any) => u.email === email.toLowerCase());
-    if (!user) { res.status(401).json({ error: "Invalid credentials" }); return; }
+    if (!user) { recordLoginFailure(key); res.status(401).json({ error: "Invalid credentials" }); return; }
     if (user.suspended) { res.status(403).json({ error: "Account suspended. Contact your administrator." }); return; }
     if (!user.isApproved) { res.status(403).json({ error: "Account pending approval. Contact your administrator." }); return; }
 
@@ -388,8 +454,9 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     }
 
     const valid = await bcrypt.compare(password, user.password);
-    if (!valid) { res.status(401).json({ error: "Invalid credentials" }); return; }
+    if (!valid) { recordLoginFailure(key); res.status(401).json({ error: "Invalid credentials" }); return; }
 
+    loginFailures.delete(key);
     const token = issueToken(res, { id: user.id, email: user.email, role: user.role });
     addLog(`User logged in: ${user.name}`, "login", user.id);
     res.json({ status: "success", user: safeUser(user), token });
@@ -413,18 +480,33 @@ app.get("/api/auth/me", (req: Request, res: Response) => {
 });
 
 app.post("/api/auth/change-password", async (req: Request, res: Response) => {
-  const session = requireSession(req, res);
-  if (!session) return;
-  const { currentPassword, newPassword } = req.body;
-  const user = state.users.find((u: any) => u.id === session.userId);
-  if (!user) { res.status(404).json({ error: "User not found" }); return; }
-  if (user.password) {
-    const valid = await bcrypt.compare(currentPassword, user.password);
-    if (!valid) { res.status(400).json({ error: "Current password incorrect" }); return; }
+  try {
+    const session = requireSession(req, res);
+    if (!session) return;
+    const { currentPassword, newPassword } = req.body;
+    if (!newPassword || typeof newPassword !== "string" || newPassword.length < 6) {
+      res.status(400).json({ error: "New password must be at least 6 characters" }); return;
+    }
+    const user = state.users.find((u: any) => u.id === session.userId);
+    if (!user) { res.status(404).json({ error: "User not found" }); return; }
+    if (user.password) {
+      if (!currentPassword || typeof currentPassword !== "string") {
+        res.status(400).json({ error: "Current password is required" }); return;
+      }
+      const valid = await bcrypt.compare(currentPassword, user.password);
+      if (!valid) { res.status(400).json({ error: "Current password incorrect" }); return; }
+      // Reject reusing the current password as the new one.
+      const unchanged = await bcrypt.compare(newPassword, user.password);
+      if (unchanged) { res.status(400).json({ error: "New password must be different from the current password" }); return; }
+    }
+    user.password = await bcrypt.hash(newPassword, 10);
+    user.mustChangePassword = false;
+    saveState();
+    res.json({ status: "success" });
+  } catch (err) {
+    console.error("[change-password]", err);
+    res.status(500).json({ error: "Password change failed" });
   }
-  user.password = await bcrypt.hash(newPassword, 10);
-  saveState();
-  res.json({ status: "success" });
 });
 
 // ─── Forgot / Reset Password ─────────────────────────────────────────────────
@@ -434,18 +516,30 @@ app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
     const { email } = req.body;
     if (!email) { res.status(400).json({ error: "Email is required" }); return; }
 
-    const user = state.users.find((u: any) => u.email === email.toLowerCase().trim());
+    const normalizedEmail = String(email).toLowerCase().trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      res.status(400).json({ error: "Enter a valid email address" }); return;
+    }
+
+    const user = state.users.find((u: any) => u.email === normalizedEmail);
     // Always respond success to prevent email enumeration
     if (!user) { res.json({ status: "success" }); return; }
 
     const token = crypto.randomBytes(32).toString("hex");
     const expiry = Date.now() + 60 * 60 * 1000; // 1 hour
-    user.passwordResetToken = token;
+    // Store only the SHA-256 digest: state is persisted to db_state.json and to the
+    // database snapshot, where a plaintext reset token would allow account takeover.
+    user.passwordResetToken = crypto.createHash("sha256").update(token).digest("hex");
     user.passwordResetExpiry = expiry;
     saveState();
 
     const resetUrl = `${process.env.APP_URL || "https://digitalmanufacturing.academy"}/?reset=${token}`;
     await sendPasswordResetEmail(user.email, user.name, resetUrl);
+    // When SMTP is not configured the emailed link can only reach the operator via
+    // the console. Never print a live reset token while real email is configured.
+    if (!process.env.SMTP_PASS) {
+      console.log(`Password reset link for ${user.email}: ${resetUrl}`);
+    }
     addLog(`Password reset requested for: ${user.email}`, "password_reset_request", user.id);
     res.json({ status: "success" });
   } catch (err) {
@@ -454,14 +548,29 @@ app.post("/api/auth/forgot-password", async (req: Request, res: Response) => {
   }
 });
 
+// The frontend validates the reset link here before letting the user set a new
+// password. (This route was missing entirely — the reset page fell through to
+// the SPA fallback and always reported an invalid link.)
+app.get("/api/auth/reset-password/validate", (req: Request, res: Response) => {
+  const token = String(req.query.token ?? "");
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+  const valid = state.users.some(
+    (u: any) => u.passwordResetToken === tokenHash && u.passwordResetExpiry > Date.now()
+  );
+  res.json({ valid });
+});
+
 app.post("/api/auth/reset-password", async (req: Request, res: Response) => {
   try {
-    const { token, password } = req.body;
+    const token = req.body?.token;
+    // SignInPage sends { token, password }, ResetPasswordPage sends { token, newPassword }
+    const password = req.body?.password ?? req.body?.newPassword;
     if (!token || !password) { res.status(400).json({ error: "Token and new password are required" }); return; }
-    if (password.length < 6) { res.status(400).json({ error: "Password must be at least 6 characters" }); return; }
+    if (String(password).length < 6) { res.status(400).json({ error: "Password must be at least 6 characters" }); return; }
 
+    const tokenHash = crypto.createHash("sha256").update(String(token)).digest("hex");
     const user = state.users.find(
-      (u: any) => u.passwordResetToken === token && u.passwordResetExpiry > Date.now()
+      (u: any) => u.passwordResetToken === tokenHash && u.passwordResetExpiry > Date.now()
     );
     if (!user) { res.status(400).json({ error: "This reset link is invalid or has expired. Please request a new one." }); return; }
 
@@ -1365,18 +1474,61 @@ app.get("/api/events", (_req: Request, res: Response) => {
   res.json(state.events);
 });
 
+// ─── Calendar notice / event posting roles ───────────────────────────────────
+// Admins, super-admins, instructors and moderators ("mod") may publish to the
+// public Events calendar. Custom roles qualify when their name or permissions
+// mention moderation, events or notices, so a role named e.g. "Moderator"
+// created in Role Management can post without a schema change.
+const NOTICE_ROLES = ["admin", "super_admin", "instructor"];
+
+function canPostNotice(session: { userId: string; role: string } | null): boolean {
+  if (!session) return false;
+  if (NOTICE_ROLES.includes(session.role)) return true;
+  const user = state.users.find((u: any) => u.id === session.userId);
+  const customRole = (state.customRoles || []).find((r: any) => r.id === user?.customRoleId);
+  const haystack = [
+    session.role, user?.role, customRole?.name, ...(customRole?.permissions || []),
+  ].filter(Boolean).join(" ").toLowerCase();
+  return /\bmod\b|moderator|notice|event/.test(haystack);
+}
+
 app.post("/api/events/create", (req: Request, res: Response) => {
-  const session = requireAdmin(req, res);
+  const session = requireSession(req, res);
   if (!session) return;
-  const { title, description, date, location, capacity, type } = req.body;
+  if (!canPostNotice(session)) {
+    res.status(403).json({ error: "Only admins, instructors and moderators can post notices" });
+    return;
+  }
+  const b = req.body || {};
+  const title = String(b.title || "").trim();
+  const date = String(b.date || "").trim();
   if (!title || !date) { res.status(400).json({ error: "title and date required" }); return; }
+
+  const user = state.users.find((u: any) => u.id === session.userId);
+  const description = String(b.description ?? b.desc ?? "").trim().slice(0, 2000);
+  const kind = b.kind === "notice" || /notice|exam/i.test(String(b.type || "")) ? "notice" : "event";
+
   const event = {
-    id: `evt_${Date.now()}`, title, description: description || "",
-    date, location: location || "Online", capacity: capacity || 100,
-    type: type || "webinar", attendeeCount: 0, createdAt: new Date().toISOString(),
+    id: `evt_${Date.now()}`,
+    title: title.slice(0, 160),
+    date,
+    time: String(b.time || "").trim().slice(0, 40) || "All day",
+    host: String(b.host || "").trim().slice(0, 120) || user?.name || session.email,
+    type: String(b.type || "Notice").trim().slice(0, 60),
+    category: String(b.category || "General").trim().slice(0, 60),
+    desc: description,
+    description, // legacy field kept for older clients
+    kind, // "event" | "notice"
+    location: String(b.location || "Online").trim().slice(0, 160),
+    capacity: Number(b.capacity) > 0 ? Number(b.capacity) : 100,
+    attendeeCount: 0,
+    postedBy: session.userId,
+    postedByName: user?.name || session.email,
+    postedByRole: session.role,
+    createdAt: new Date().toISOString(),
   };
   state.events.push(event);
-  addLog(`Event created: ${title}`, "event_create", session.userId);
+  addLog(`${kind === "notice" ? "Notice" : "Event"} posted: ${event.title}`, "event_create", session.userId);
   saveState();
   res.json({ status: "success", event });
 });
@@ -1389,6 +1541,185 @@ app.post("/api/events/:id/attend", (req: Request, res: Response) => {
   event.attendeeCount = (event.attendeeCount || 0) + 1;
   saveState();
   res.json({ status: "success" });
+});
+
+// ─── Study materials (Repository) ─────────────────────────────────────────────
+// Instructors upload study material as base64; students/public browse the list
+// and download through the gated route below.
+const STUDY_MATERIAL_MAX_BYTES = 25 * 1024 * 1024; // 25MB
+const STUDY_MATERIAL_EXTENSIONS = [
+  "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv",
+  "zip", "rar", "png", "jpg", "jpeg", "gif", "webp", "svg",
+];
+const STUDY_MATERIAL_MIME: Record<string, string> = {
+  pdf: "application/pdf", doc: "application/msword",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xls: "application/vnd.ms-excel",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  txt: "text/plain", csv: "text/csv", zip: "application/zip", rar: "application/vnd.rar",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", svg: "image/svg+xml",
+};
+
+/** Public projection — never ship the base64 payload in a listing. */
+function materialSummary(m: any) {
+  const { fileData: _fileData, ...rest } = m;
+  return rest;
+}
+
+function base64Bytes(base64: string): number {
+  const clean = base64.replace(/\s/g, "");
+  const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
+}
+
+// 1. Public listing for students (metadata only)
+app.get("/api/study-materials", (_req: Request, res: Response) => {
+  const materials = (state.studyMaterials || [])
+    .slice()
+    .sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+    .map(materialSummary);
+  res.json({ materials });
+});
+
+// 2. Instructor's own materials
+app.get(
+  "/api/study-materials/all",
+  requireApprovedInstructor(() => state),
+  (req: Request, res: Response) => {
+    const session = req.session!;
+    const materials = (state.studyMaterials || [])
+      .filter((m: any) => m.uploaderId === session.userId)
+      .slice()
+      .sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
+      .map(materialSummary);
+    res.json({ materials });
+  }
+);
+
+// 3. Instructor file upload (base64 data URL)
+app.post(
+  "/api/study-materials",
+  requireApprovedInstructor(() => state),
+  (req: Request, res: Response) => {
+    const session = req.session!;
+    const user = req.user as any;
+    const b = req.body || {};
+
+    const title = String(b.title || "").trim().slice(0, 160);
+    if (!title) { res.status(400).json({ error: "Title is required" }); return; }
+
+    const fileData = String(b.fileData || "").trim();
+    if (!fileData || !fileData.startsWith("data:")) {
+      res.status(400).json({ error: "A file is required (base64 data URL)" });
+      return;
+    }
+
+    const header = fileData.slice(5, fileData.indexOf(",")); // e.g. application/pdf;base64
+    const base64 = fileData.slice(fileData.indexOf(",") + 1);
+    const declaredType = header.split(";")[0] || "";
+    const fileName = String(b.fileName || "material").trim().slice(0, 180);
+    const ext = (fileName.split(".").pop() || "").toLowerCase();
+
+    if (!STUDY_MATERIAL_EXTENSIONS.includes(ext)) {
+      res.status(400).json({
+        error: `Unsupported file type ".${ext}". Allowed: ${STUDY_MATERIAL_EXTENSIONS.join(", ")}`,
+      });
+      return;
+    }
+    const fileSize = base64Bytes(base64);
+    if (fileSize > STUDY_MATERIAL_MAX_BYTES) {
+      res.status(413).json({ error: "File is too large — the maximum size is 25MB" });
+      return;
+    }
+
+    const mimeType = declaredType && declaredType !== "application/octet-stream"
+      ? declaredType
+      : STUDY_MATERIAL_MIME[ext] || "application/octet-stream";
+
+    const tags = (Array.isArray(b.tags) ? b.tags : String(b.tags || "").split(","))
+      .map((t: any) => String(t).trim().toLowerCase())
+      .filter(Boolean)
+      .slice(0, 12);
+
+    const material = {
+      id: `mat_${Date.now()}`,
+      title,
+      description: String(b.description || "").trim().slice(0, 1000),
+      courseId: String(b.courseId || "").trim() || null,
+      tags,
+      fileName,
+      fileType: ext,
+      mimeType,
+      fileSize,
+      fileData,
+      uploaderId: session.userId,
+      uploaderName: user?.name || session.email,
+      uploaderRole: session.role,
+      downloads: 0,
+      createdAt: new Date().toISOString(),
+    };
+
+    state.studyMaterials = state.studyMaterials || [];
+    state.studyMaterials.push(material);
+    addLog(`Study material uploaded: ${title}`, "study_material", session.userId);
+    saveState();
+    res.status(201).json({ status: "success", material: materialSummary(material) });
+  }
+);
+
+// 4. Delete own material (admins/mods may remove any)
+app.delete(
+  "/api/study-materials/:id",
+  requireApprovedInstructor(() => state),
+  (req: Request, res: Response) => {
+    const session = req.session!;
+    const idx = (state.studyMaterials || []).findIndex((m: any) => m.id === req.params.id);
+    if (idx === -1) { res.status(404).json({ error: "Material not found" }); return; }
+    const material = state.studyMaterials[idx];
+    const isOwner = material.uploaderId === session.userId;
+    const isManager = session.role === "admin" || session.role === "super_admin";
+    if (!isOwner && !isManager) {
+      res.status(403).json({ error: "You can only delete your own materials" });
+      return;
+    }
+    state.studyMaterials.splice(idx, 1);
+    addLog(`Study material deleted: ${material.title}`, "study_material", session.userId);
+    saveState();
+    res.json({ status: "success" });
+  }
+);
+
+// 5. Track download + return the file (sign-in required)
+app.post("/api/study-materials/:id/download", (req: Request, res: Response) => {
+  const session = requireSession(req, res);
+  if (!session) return;
+  const material = (state.studyMaterials || []).find((m: any) => m.id === req.params.id);
+  if (!material) { res.status(404).json({ error: "Material not found" }); return; }
+
+  // Count tracking only for enrolled students (materials with no course link
+  // count for every signed-in learner).
+  const enrolled = !material.courseId || state.enrollments.some(
+    (e: any) => e.userId === session.userId && e.courseId === material.courseId
+  );
+  if (enrolled) {
+    material.downloads = (material.downloads || 0) + 1;
+    material.downloadLog = Array.isArray(material.downloadLog) ? material.downloadLog : [];
+    material.downloadLog.unshift({ userId: session.userId, at: new Date().toISOString() });
+    material.downloadLog = material.downloadLog.slice(0, 200);
+    saveState();
+  }
+
+  res.json({
+    status: "success",
+    fileName: material.fileName,
+    mimeType: material.mimeType || "application/octet-stream",
+    fileData: material.fileData,
+    downloads: material.downloads || 0,
+    counted: enrolled,
+  });
 });
 
 // ─── Messages ─────────────────────────────────────────────────────────────────
@@ -1754,20 +2085,48 @@ app.post("/api/quiz/attempt", (req: Request, res: Response) => {
 });
 
 app.get("/api/quiz/analytics", (req: Request, res: Response) => {
-  const session = requireAdmin(req, res);
+  const session = requireSession(req, res);
   if (!session) return;
-  const totalAttempts = state.quizAttempts.length;
-  const passed = state.quizAttempts.filter((a: any) => a.passed).length;
-  const avgScore = totalAttempts > 0 ? Math.round(state.quizAttempts.reduce((s: number, a: any) => s + a.score, 0) / totalAttempts) : 0;
+  const isAdmin = session.role === "admin" || session.role === "super_admin";
+  const isInstructor = session.role === "instructor";
+  if (!isAdmin && !isInstructor) {
+    res.status(403).json({ error: "Instructors and admins only" });
+    return;
+  }
+
+  // Instructors only see attempts from courses they teach; admins see everything.
+  let attempts = state.quizAttempts;
+  if (isInstructor) {
+    const myCourseIds = new Set(
+      state.courses.filter((c: any) => c.instructorId === session.userId).map((c: any) => c.id)
+    );
+    attempts = attempts.filter((a: any) => myCourseIds.has(a.courseId));
+  }
+  const nameOf = (userId: string) =>
+    state.users.find((u: any) => u.id === userId)?.name || "Student";
+  // Answer breakdowns stay server-side — the analytics view only needs outcomes.
+  const decorate = (a: any) => ({
+    id: a.id, userId: a.userId, userName: nameOf(a.userId), courseId: a.courseId,
+    quizId: a.quizId, quizTitle: a.quizTitle, score: a.score, passed: a.passed,
+    correct: a.correct, total: a.total, attemptedAt: a.attemptedAt,
+  });
+
+  const totalAttempts = attempts.length;
+  const passed = attempts.filter((a: any) => a.passed).length;
+  const avgScore = totalAttempts > 0 ? Math.round(attempts.reduce((s: number, a: any) => s + a.score, 0) / totalAttempts) : 0;
   const byQuiz: Record<string, any> = {};
-  for (const a of state.quizAttempts) {
+  for (const a of attempts) {
     if (!byQuiz[a.quizId]) byQuiz[a.quizId] = { title: a.quizTitle, attempts: 0, passed: 0, totalScore: 0 };
     byQuiz[a.quizId].attempts++;
     if (a.passed) byQuiz[a.quizId].passed++;
     byQuiz[a.quizId].totalScore += a.score;
   }
   const quizStats = Object.values(byQuiz).map((q: any) => ({ ...q, avgScore: Math.round(q.totalScore / q.attempts) }));
-  res.json({ totalAttempts, passed, failed: totalAttempts - passed, avgScore, quizStats, recentAttempts: state.quizAttempts.slice(-20).reverse() });
+  res.json({
+    totalAttempts, passed, failed: totalAttempts - passed, avgScore, quizStats,
+    recentAttempts: attempts.slice(-20).reverse().map(decorate),
+    scope: isInstructor ? "my_courses" : "platform",
+  });
 });
 
 // ─── Exam Routes ──────────────────────────────────────────────────────────────
@@ -2088,8 +2447,86 @@ async function startServer(): Promise<void> {
   });
 
   const distPath = path.join(process.cwd(), "dist");
-  app.use(express.static(distPath, { maxAge: 0 }));
+
+  // ── Cache policy ────────────────────────────────────────────────────────────
+  // Everything Vite emits under /assets is content-hashed, so it can be cached
+  // for a year and marked immutable. The HTML shell always revalidates so a new
+  // deploy can never point at a removed hash.
+  const ONE_YEAR = 31536000;
+  const cacheControlFor = (filePath: string): string =>
+    filePath.includes(`${path.sep}assets${path.sep}`)
+      ? `public, max-age=${ONE_YEAR}, immutable`
+      : "public, max-age=0, must-revalidate";
+
+  // ── Compression ─────────────────────────────────────────────────────────────
+  // Hand-rolled gzip for the static build (no extra dependency): each file is
+  // compressed once per version and reused in memory. This is what takes the
+  // ~390KB main bundle and the ~145KB stylesheet down to a fraction of their
+  // size on the wire, which is the biggest lever on payload-related audits.
+  const GZIP_TYPES: Record<string, string> = {
+    ".html": "text/html; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+    ".css": "text/css; charset=utf-8",
+    ".json": "application/json; charset=utf-8",
+    ".svg": "image/svg+xml",
+    ".txt": "text/plain; charset=utf-8",
+    ".xml": "application/xml; charset=utf-8",
+    ".webmanifest": "application/manifest+json",
+  };
+  const GZIP_CACHE_MAX = 64;
+  const gzipCache = new Map<string, { mtimeMs: number; buffer: Buffer }>();
+
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "GET" || !/\bgzip\b/.test(String(req.headers["accept-encoding"] || ""))) {
+      next();
+      return;
+    }
+    let rel = decodeURIComponent(req.path).replace(/^\/+/, "");
+    if (rel === "" || rel.endsWith("/")) rel += "index.html";
+    const ext = path.extname(rel).toLowerCase();
+    const type = GZIP_TYPES[ext];
+    if (!type) { next(); return; }
+
+    const filePath = path.join(distPath, rel);
+    if (!filePath.startsWith(distPath + path.sep)) { next(); return; }
+
+    let stat: fs.Stats;
+    try { stat = fs.statSync(filePath); } catch { next(); return; }
+    if (!stat.isFile()) { next(); return; }
+
+    const send = (buffer: Buffer) => {
+      res.setHeader("Content-Type", type);
+      res.setHeader("Content-Encoding", "gzip");
+      res.setHeader("Vary", "Accept-Encoding");
+      res.setHeader("Content-Length", String(buffer.length));
+      res.setHeader("Cache-Control", cacheControlFor(filePath));
+      res.end(buffer);
+    };
+
+    const cached = gzipCache.get(filePath);
+    if (cached && cached.mtimeMs === stat.mtimeMs) { send(cached.buffer); return; }
+
+    fs.readFile(filePath, (readErr, data) => {
+      if (readErr) { next(); return; }
+      zlib.gzip(data, (gzErr, buffer) => {
+        if (gzErr || !buffer) { next(); return; }
+        gzipCache.set(filePath, { mtimeMs: stat.mtimeMs, buffer });
+        if (gzipCache.size > GZIP_CACHE_MAX) {
+          const oldest = gzipCache.keys().next().value;
+          if (oldest !== undefined) gzipCache.delete(oldest);
+        }
+        send(buffer);
+      });
+    });
+  });
+
+  app.use(express.static(distPath, {
+    setHeaders: (res, filePath) => {
+      res.setHeader("Cache-Control", cacheControlFor(filePath));
+    },
+  }));
   app.get("*", (_req: Request, res: Response) => {
+    res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
     res.sendFile(path.join(distPath, "index.html"));
   });
 

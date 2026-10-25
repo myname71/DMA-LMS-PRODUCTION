@@ -9,6 +9,8 @@ import { Course, User, Enrollment, Certificate, LearningPath } from '../types';
 import LearningPathsView from './LearningPathsView';
 import Leaderboard from './Leaderboard';
 import LessonMedia from './LessonMedia';
+import Repository from './Repository';
+import AssessmentModule from './assessment/AssessmentModule';
 
 interface StudentDashboardProps {
   currentUser: User;
@@ -21,6 +23,7 @@ interface StudentDashboardProps {
   onExploreCourses: () => void;
   onLaunchPlayer?: (course: Course) => void;
   onProfileUpdated?: (user: User) => void;
+  triggerToast?: (msg: string, type?: 'success' | 'warn') => void;
 }
 
 export default function StudentDashboard({
@@ -34,11 +37,12 @@ export default function StudentDashboard({
   onExploreCourses,
   onLaunchPlayer,
   onProfileUpdated,
+  triggerToast = () => {},
 }: StudentDashboardProps) {
   const [activeCourseId, setActiveCourseId] = useState<string | null>(null);
   const [currentlyPlayingLesson, setCurrentlyPlayingLesson] = useState<any | null>(null);
   const [activeSlideIndex, setActiveSlideIndex] = useState<number>(0);
-  const [activeTab, setActiveTab] = useState<'learning' | 'paths' | 'certificates' | 'messages' | 'profile' | 'leaderboard'>('learning');
+  const [activeTab, setActiveTab] = useState<'learning' | 'downloads' | 'assessment' | 'paths' | 'certificates' | 'messages' | 'profile' | 'leaderboard'>('learning');
   
   // Messaging states
   const [messages, setMessages] = useState<any[]>([]);
@@ -294,7 +298,7 @@ export default function StudentDashboard({
 
         {/* Navigation tabs */}
         <div className="flex flex-wrap gap-2">
-          {['learning', 'paths', 'certificates', 'messages', 'profile', 'leaderboard'].map(tab => (
+          {['learning', 'downloads', 'assessment', 'paths', 'certificates', 'messages', 'profile', 'leaderboard'].map(tab => (
             <button
               key={tab}
               onClick={() => { setActiveTab(tab as any); setActiveCourseId(null); setActiveQuizCourse(null); }}
@@ -963,6 +967,35 @@ export default function StudentDashboard({
               </div>
             )}
           </div>
+        )}
+
+        {/* Downloads — study materials published by instructors */}
+        {activeTab === 'downloads' && (
+          <div className="space-y-6 text-left">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">My Downloads</h3>
+                <p className="text-xs text-slate-500">
+                  Study material uploaded by your instructors — press Download to save a copy to this device.
+                </p>
+              </div>
+            </div>
+            <Repository
+              currentUser={currentUser}
+              embedded
+              triggerToast={triggerToast}
+            />
+          </div>
+        )}
+
+        {/* Assessment — own quizzes, assignments, exams and results */}
+        {activeTab === 'assessment' && (
+          <AssessmentModule
+            currentUser={currentUser}
+            courses={courses}
+            enrollments={enrollments}
+            embedded
+          />
         )}
 
         {/* Profile Settings view tab */}

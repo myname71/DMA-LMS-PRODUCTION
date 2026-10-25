@@ -9,6 +9,8 @@ interface AssessmentModuleProps {
   currentUser: any;
   courses: any[];
   enrollments: any[];
+  /** Rendered inside a dashboard tab — skips the standalone page padding. */
+  embedded?: boolean;
 }
 
 type TabType = 'quizzes' | 'assignments' | 'exams';
@@ -19,7 +21,7 @@ type ExamView = 'schedule' | 'attempt' | 'results';
 const API = (url: string, opts?: RequestInit) =>
   fetch(url, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
 
-export default function AssessmentModule({ currentUser, courses, enrollments }: AssessmentModuleProps) {
+export default function AssessmentModule({ currentUser, courses, enrollments, embedded = false }: AssessmentModuleProps) {
   const [tab, setTab] = useState<TabType>('quizzes');
 
   // ── QUIZ STATE ──────────────────────────────────────────────────────────────
@@ -57,10 +59,18 @@ export default function AssessmentModule({ currentUser, courses, enrollments }: 
   const [examLoading, setExamLoading] = useState(false);
   const examTimerRef = useRef<any>(null);
 
-  // Enrolled courses
-  const enrolledCourses = courses.filter(c =>
-    enrollments.some(e => e.courseId === c.id && e.userId === currentUser?.id)
-  );
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const isInstructor = currentUser?.role === 'instructor' || isAdmin;
+
+  // Role-scoped catalogue: students see the courses they enrolled in,
+  // instructors the courses they teach, admins the whole platform.
+  const enrolledCourses = isInstructor
+    ? (currentUser?.role === 'instructor'
+        ? courses.filter(c => c.instructorId === currentUser.id)
+        : courses)
+    : courses.filter(c =>
+        enrollments.some(e => e.courseId === c.id && e.userId === currentUser?.id)
+      );
 
   // All quizzes across enrolled courses
   const allQuizzes = enrolledCourses.flatMap(c =>
@@ -82,7 +92,7 @@ export default function AssessmentModule({ currentUser, courses, enrollments }: 
   }, [currentUser]);
 
   useEffect(() => {
-    if (quizView === 'analytics' && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin')) {
+    if (quizView === 'analytics' && isInstructor) {
       loadAnalytics();
     }
   }, [quizView]);
@@ -209,14 +219,11 @@ export default function AssessmentModule({ currentUser, courses, enrollments }: 
     setExamLoading(false);
   }
 
-  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
-  const isInstructor = currentUser?.role === 'instructor' || isAdmin;
-
   const TAB_CLASSES = (active: boolean) =>
     `px-4 py-2 text-xs font-bold rounded-lg cursor-pointer transition-colors ${active ? 'bg-blue-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`;
 
   return (
-    <div className="pt-24 pb-20 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+    <div className={`${embedded ? '' : 'pt-24 pb-20 '}px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto`}>
       {/* Header */}
       <div className="mb-8 space-y-3">
         <div className="flex items-center gap-3">
@@ -226,7 +233,9 @@ export default function AssessmentModule({ currentUser, courses, enrollments }: 
           <span className="text-xs font-bold text-blue-400 uppercase tracking-widest font-mono">Assessment Centre</span>
         </div>
         <h1 className="text-3xl font-extrabold text-white">Assessments</h1>
-        <p className="text-slate-400 text-sm">Quizzes, assignments, and scheduled exams for your enrolled courses.</p>
+        <p className="text-slate-400 text-sm">{isInstructor
+          ? 'Quiz, assignment and exam outcomes across your courses — track how your students are performing.'
+          : 'Quizzes, assignments, and scheduled exams for your enrolled courses.'}</p>
       </div>
 
       {/* Tab Bar */}
@@ -246,7 +255,7 @@ export default function AssessmentModule({ currentUser, courses, enrollments }: 
         <div>
           {/* Sub-nav */}
           <div className="flex gap-2 mb-6 flex-wrap">
-            {([['list', 'Quiz List'], ['results', 'My Results'], ...(isAdmin ? [['analytics', 'Analytics']] : [])] as const).map(([key, label]) => (
+            {([['list', 'Quiz List'], ['results', 'My Results'], ...(isInstructor ? [['analytics', 'Student Performance']] : [])] as const).map(([key, label]) => (
               <button key={key} onClick={() => setQuizView(key as QuizView)}
                 className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-lg cursor-pointer transition-colors ${quizView === key ? 'text-blue-400 border border-blue-500/40 bg-blue-600/10' : 'text-slate-500 border border-slate-800 hover:text-slate-300'}`}>
                 {label}
@@ -371,8 +380,8 @@ export default function AssessmentModule({ currentUser, courses, enrollments }: 
             </div>
           )}
 
-          {/* Quiz Analytics (Admin) */}
-          {quizView === 'analytics' && isAdmin && (
+          {/* Quiz Analytics (instructors & admins) */}
+          {quizView === 'analytics' && isInstructor && (
             <div className="space-y-6">
               {!analytics ? (
                 <div className="text-center py-12 text-slate-500 text-xs">Loading analytics…</div>
@@ -411,6 +420,45 @@ export default function AssessmentModule({ currentUser, courses, enrollments }: 
                         </div>
                       ))}
                     </div>
+                  </div>
+
+                  {/* Latest attempts, per student */}
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Recent Student Attempts</h4>
+                    {(analytics.recentAttempts || []).length === 0 ? (
+                      <p className="text-xs text-slate-500 p-4 rounded-xl border border-slate-800 bg-slate-900/50">
+                        No quiz attempts recorded for your courses yet.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="text-[10px] uppercase font-mono text-slate-500 border-b border-slate-800">
+                              <th className="py-2 pr-3">Student</th>
+                              <th className="py-2 pr-3">Quiz</th>
+                              <th className="py-2 pr-3">Score</th>
+                              <th className="py-2 pr-3">Result</th>
+                              <th className="py-2">Attempted</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {analytics.recentAttempts.map((a: any) => (
+                              <tr key={a.id} className="border-b border-slate-800/70 text-slate-300">
+                                <td className="py-2.5 pr-3 font-bold text-white">{a.userName || 'Student'}</td>
+                                <td className="py-2.5 pr-3 text-slate-400">{a.quizTitle || 'Quiz'}</td>
+                                <td className="py-2.5 pr-3 font-mono">{a.score}%</td>
+                                <td className={`py-2.5 pr-3 font-bold ${a.passed ? 'text-teal-400' : 'text-red-400'}`}>
+                                  {a.passed ? 'PASS' : 'FAIL'}
+                                </td>
+                                <td className="py-2.5 text-slate-500 font-mono">
+                                  {a.attemptedAt ? new Date(a.attemptedAt).toLocaleString() : '—'}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

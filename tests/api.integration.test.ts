@@ -54,7 +54,8 @@ async function waitFor(fn: () => boolean, ms = 15000) {
 }
 
 const lastResetToken = (email: string): string | null => {
-  const re = new RegExp(`Password reset link for ${email.replace(/[.+]/g, "\\$&")}: \\S+token=([a-f0-9]+)`, "g");
+  // The emailed/reset link format is `/?reset=<64-hex>` (App.tsx / SignInPage read ?reset=)
+  const re = new RegExp(`Password reset link for ${email.replace(/[.+]/g, "\\$&")}: \\S+reset=([a-f0-9]+)`, "g");
   let m, t: string | null = null;
   while ((m = re.exec(log))) t = m[1];
   return t;
@@ -64,16 +65,26 @@ before(async () => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "dma-test-"));
   const port = await freePort();
   base = `http://127.0.0.1:${port}`;
-  proc = spawn(path.join(ROOT, "node_modules/.bin/tsx"), [path.join(ROOT, "server.ts")], {
+  // Run tsx's JS CLI through node directly: the POSIX shim in node_modules/.bin
+  // is not spawnable on Windows (ENOENT), which made this suite never boot.
+  const tsxCli = path.join(ROOT, "node_modules", "tsx", "dist", "cli.mjs");
+  const childEnv: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_ENV: "development",
+    PORT: String(port),
+    JWT_SECRET: "test-secret-test-secret-test-secret-123456",
+    SEED_ADMIN_EMAIL: ADMIN_EMAIL,
+    SEED_ADMIN_PASSWORD: ADMIN_PW,
+    SEED_SUPER_ADMIN_EMAIL: "seed.super@example.test",
+    SEED_SUPER_ADMIN_PASSWORD: ADMIN_PW,
+  };
+  // Guarantee the ephemeral JSON-store path (no DB / SMTP), as documented above.
+  delete childEnv.DATABASE_URL;
+  delete childEnv.DIRECT_URL;
+  delete childEnv.SMTP_PASS;
+  proc = spawn(process.execPath, [tsxCli, path.join(ROOT, "server.ts")], {
     cwd: tmp,
-    env: {
-      PATH: process.env.PATH,
-      NODE_ENV: "development",
-      PORT: String(port),
-      JWT_SECRET: "test-secret-test-secret-test-secret-123456",
-      SEED_ADMIN_EMAIL: ADMIN_EMAIL,
-      SEED_ADMIN_PASSWORD: ADMIN_PW,
-    } as NodeJS.ProcessEnv,
+    env: childEnv,
   });
   proc.stdout!.on("data", d => (log += d));
   proc.stderr!.on("data", d => (log += d));
@@ -82,7 +93,13 @@ before(async () => {
 
 after(() => {
   proc?.kill();
-  fs.rmSync(tmp, { recursive: true, force: true });
+  // Windows keeps file handles for a moment after kill(); rmSync then throws
+  // EPERM unless the child has exited — retry with backoff before giving up.
+  try {
+    fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  } catch {
+    // Best-effort cleanup of the temp dir; never fail the suite over it.
+  }
 });
 
 test("health endpoint responds ok", async () => {
@@ -155,6 +172,7 @@ test("reset-password: full flow, single use, old password dies", async () => {
 test("reset tokens are stored hashed, not in plaintext", async () => {
   const email = "student1@example.test";
   await api("POST", "/api/auth/forgot-password", { email: "student1@example.test" }).catch(() => {});
+  await waitFor(() => !!lastResetToken(email));
   const token = lastResetToken(email)!;
   const state = fs.readFileSync(path.join(tmp, "db_state.json"), "utf8");
   assert.ok(!state.includes(token), "plaintext token found in db_state.json");
