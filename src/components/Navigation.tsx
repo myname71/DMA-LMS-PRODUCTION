@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   Menu, X, Shield, User as UserIcon, BookOpen, 
   Database, LogIn, UserPlus, GraduationCap, ChevronDown, CheckCircle, Grid, Sparkles, MapPin, Mail, MessageSquare, Search,
-  Home, BookMarked, CalendarDays, LayoutDashboard, UserCircle2, Megaphone, FileText
+  Home, BookMarked, CalendarDays, LayoutDashboard, UserCircle2, Megaphone, FileText, Archive, Award, ArrowLeft
 } from 'lucide-react';
 import { SiteNotice, User } from '../types';
 import { DEMO_USERS } from '../data/coursesData';
@@ -79,10 +79,41 @@ export default function Navigation({
     { id: 'courses', label: 'Courses' },
     { id: 'events', label: 'Events' },
     { id: 'webinar', label: 'Webinar' },
-    { id: 'assessment', label: 'Assess' },
+    { id: 'repository', label: 'Repository' },
     { id: 'certificates', label: 'Certification' },
   ];
   const customPages = cmsPages.filter(page => !['home', 'about', 'contact'].includes(page.id));
+
+  // ── Return (back) navigation ──────────────────────────────────────────────────
+  // The app routes through state, so the browser Back button cannot be used.
+  // Keep our own stack of visited pages; the Return button pops it.
+  const pageStack = useRef<string[]>([]);
+  const lastPageRef = useRef(currentPage);
+  const suppressPush = useRef(false);
+
+  useEffect(() => {
+    if (suppressPush.current) {
+      suppressPush.current = false;
+      lastPageRef.current = currentPage;
+      return;
+    }
+    if (lastPageRef.current !== currentPage) {
+      const prev = lastPageRef.current;
+      if (pageStack.current[pageStack.current.length - 1] !== prev) pageStack.current.push(prev);
+      if (pageStack.current.length > 30) pageStack.current.shift();
+      lastPageRef.current = currentPage;
+    }
+  }, [currentPage]);
+
+  const handleBack = () => {
+    setMegaMenuOpen(false);
+    setMobileMenuOpen(false);
+    let prev = pageStack.current.pop();
+    while (prev && prev === currentPage) prev = pageStack.current.pop();
+    suppressPush.current = true;
+    setCurrentPage(prev || 'home');
+    window.scrollTo(0, 0);
+  };
 
   const handleRoleSwitch = (roleKey: string) => {
     const selectedUser = DEMO_USERS[roleKey];
@@ -113,27 +144,42 @@ export default function Navigation({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-18">
           
-          {/* Logo Brand */}
-          <div 
-            className="flex items-center gap-2 cursor-pointer" 
-            onClick={() => { 
-              setCurrentPage('home'); 
-              setSelectedCategoryFilter('All');
-              setMegaMenuOpen(false); 
-              window.scrollTo(0, 0); 
-            }}
-            id="nav-logo"
-          >
-            <img
-              src="/dma-logo.png"
-              alt="DMA Academy Logo"
-              width={60}
-              height={60}
-              decoding="async"
-              className="w-[54px] h-[54px] sm:w-[60px] sm:h-[60px] p-1 object-contain drop-shadow-[0_0_8px_rgba(37,99,235,0.6)]"
-            />
-            <div className="flex flex-col text-left leading-none">
-              <span className="font-sans font-extrabold text-sm tracking-tight text-white">DMA Academy</span>
+          {/* Return + Logo Brand */}
+          <div className="flex items-center gap-2 min-w-0">
+            {currentPage !== 'home' && (
+              <button
+                onClick={handleBack}
+                className="group inline-flex items-center gap-1.5 pl-2.5 pr-3 min-h-[40px] py-1.5 rounded-full border border-white/10 bg-white/5 text-slate-400 hover:text-white hover:border-blue-500/45 hover:bg-blue-500/10 transition-colors shrink-0 cursor-pointer"
+                id="nav-return-btn"
+                aria-label="Return to the previous page"
+                title="Return — go back to the previous page"
+              >
+                <ArrowLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+                <span className="text-[10px] font-extrabold uppercase tracking-widest font-mono">Return</span>
+              </button>
+            )}
+            <div 
+              className="flex items-center gap-2 cursor-pointer min-w-0" 
+              onClick={() => { 
+                setCurrentPage('home'); 
+                setSelectedCategoryFilter('All');
+                setMegaMenuOpen(false); 
+                setMobileMenuOpen(false);
+                window.scrollTo(0, 0); 
+              }}
+              id="nav-logo"
+            >
+              <img
+                src="/dma-logo.png"
+                alt="DMA Academy Logo"
+                width={60}
+                height={60}
+                decoding="async"
+                className="w-[54px] h-[54px] sm:w-[60px] sm:h-[60px] p-1 object-contain drop-shadow-[0_0_8px_rgba(37,99,235,0.6)]"
+              />
+              <div className="hidden sm:flex flex-col text-left leading-none">
+                <span className="font-sans font-extrabold text-sm tracking-tight text-white">DMA Academy</span>
+              </div>
             </div>
           </div>
 
@@ -448,6 +494,18 @@ export default function Navigation({
 
             {/* Drawer nav items */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
+              {/* Return to the previous page — mobile priority navigation */}
+              {currentPage !== 'home' && (
+                <button
+                  onClick={handleBack}
+                  className="w-full text-left flex items-center gap-3 py-3 px-3.5 rounded-xl text-sm font-bold uppercase tracking-wider text-slate-300 hover:bg-white/5 hover:text-white transition-colors cursor-pointer"
+                  id="drawer-return-btn"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Return</span>
+                </button>
+              )}
+
               {navItems.map(item => {
                 const isActive = currentPage === item.id || (item.id === 'categories' && currentPage === 'courses');
                 return (
@@ -475,6 +533,8 @@ export default function Navigation({
                     {item.id === 'courses' && <BookMarked className="w-4 h-4" />}
                     {item.id === 'events' && <CalendarDays className="w-4 h-4" />}
                     {item.id === 'webinar' && <Megaphone className="w-4 h-4" />}
+                    {item.id === 'repository' && <Archive className="w-4 h-4" />}
+                    {item.id === 'certificates' && <Award className="w-4 h-4" />}
                     {item.id === 'about' && <UserCircle2 className="w-4 h-4" />}
                     {item.id === 'contact' && <Mail className="w-4 h-4" />}
                     <span>{item.label}</span>

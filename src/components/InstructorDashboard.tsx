@@ -12,6 +12,8 @@ import InstructorGrading from './InstructorGrading';
 import InstructorMessaging from './InstructorMessaging';
 import InstructorAnalytics from './InstructorAnalytics';
 import InstructorRevenue from './InstructorRevenue';
+import InstructorRepository from './InstructorRepository';
+import AssessmentModule from './assessment/AssessmentModule';
 import Leaderboard from './Leaderboard';
 
 interface InstructorDashboardProps {
@@ -37,7 +39,7 @@ export default function InstructorDashboard({
   onRefresh,
   triggerToast = () => {},
 }: InstructorDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'create_course' | 'cms' | 'grading' | 'messages' | 'analytics' | 'revenue' | 'curriculums' | 'curate_path' | 'leaderboard'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'create_course' | 'repository' | 'assessment' | 'cms' | 'grading' | 'messages' | 'analytics' | 'revenue' | 'curriculums' | 'curate_path' | 'leaderboard'>('overview');
 
   // Course Wizard Form State
   const [wizardStep, setWizardStep] = useState(1);
@@ -237,6 +239,8 @@ export default function InstructorDashboard({
           {[
             { key: 'overview', label: 'Overview' },
             { key: 'create_course', label: 'Create Course' },
+            { key: 'repository', label: 'Repository' },
+            { key: 'assessment', label: 'Assessment' },
             { key: 'cms', label: 'CMS' },
             { key: 'grading', label: 'Grading' },
             { key: 'messages', label: 'Messages' },
@@ -934,6 +938,26 @@ export default function InstructorDashboard({
             courses={courses}
             onRefresh={onRefresh || (() => {})}
             triggerToast={triggerToast}
+          />
+        )}
+
+        {/* Repository / study material uploads + site notice composer */}
+        {activeTab === 'repository' && (
+          <InstructorRepository
+            currentUser={currentUser}
+            courses={courses}
+            triggerToast={triggerToast}
+            onRefresh={onRefresh}
+          />
+        )}
+
+        {/* Assessment — student performance across this instructor's courses */}
+        {activeTab === 'assessment' && (
+          <AssessmentModule
+            currentUser={currentUser}
+            courses={courses}
+            enrollments={enrollments}
+            embedded
           />
         )}
 

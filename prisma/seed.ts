@@ -72,15 +72,15 @@ async function main() {
 
   await prisma.appUser.upsert({
     where: { email: SEED_SUPER_ADMIN_EMAIL! },
-    create: { name: "DMA Super Admin", email: SEED_SUPER_ADMIN_EMAIL!, password: superHash, role: "super_admin", isApproved: true, subscriptionPlan: "enterprise", mustChangePassword: true },
-    update: { email: SEED_SUPER_ADMIN_EMAIL!, password: superHash, role: "super_admin", isApproved: true, mustChangePassword: true },
+    create: { name: "DMA Super Admin", email: admin@digitalmanufacturing.academy, password: superHash, role: "super_admin", isApproved: true, subscriptionPlan: "enterprise", mustChangePassword: true },
+    update: { email: admin@digitalmanufacturing.academy, password: superHash, role: "super_admin", isApproved: true, mustChangePassword: true },
   });
   console.log(`[SEED] Super Admin created: ${SEED_SUPER_ADMIN_EMAIL}`);
 
   await prisma.appUser.upsert({
     where: { email: SEED_ADMIN_EMAIL! },
-    create: { name: "Digital Manufacturing Admin", email: SEED_ADMIN_EMAIL!, password: hash, role: "admin", isApproved: true, subscriptionPlan: "pro", mustChangePassword: true },
-    update: { email: SEED_ADMIN_EMAIL!, password: hash, role: "admin", isApproved: true, mustChangePassword: true },
+    create: { name: "Digital Manufacturing Admin", email: digital.mfg2026@gmail.com, password: hash, role: "admin", isApproved: true, subscriptionPlan: "pro", mustChangePassword: true },
+    update: { email: digital.mfg2026@gmail.com, password: hash, role: "admin", isApproved: true, mustChangePassword: true },
   });
   console.log(`[SEED] Admin created: ${SEED_ADMIN_EMAIL}`);
 
@@ -105,8 +105,8 @@ async function main() {
     create: {
       id: "c_1", title: "Introduction to Digital Twins & Smart Infrastructure", headline: "Build a fully synchronized virtual twin of physical industrial assets",
       description: "A comprehensive starter program structured by BCU investigators. Explores IoT data structures, visual asset geometry in CAD/CAM, and bridging real-time telemetry to Unity-based virtual mockups.",
-      category: "Digital Twin", level: "Beginner", duration: "14 Hours", instructorId: "u_instructor", instructorName: "Prof. Dr. Abdur Rahman", price: 49, isFree: false,
-      image: "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=600&h=400&fit=crop",
+      category: "Digital Twin", level: "Beginner", duration: "14 Hours", instructorId: "u_instructor", instructorName: "Prof. Dr. xyz1", price: 49, isFree: false,
+      image: "https://shorturl.at/pdBXF",
       lessons: LESSONS_C1 as any, quizzes: [{ id: "q_1_1", title: "MQTT & Virtual Synchronicity Assessment", passingScore: 80, questions: [{ id: "qq_1_1_1", question: "What constitutes the core function of a Digital Twin of a pump system?", options: ["To show photos of the pump in different angles", "Real-time physical asset simulation and parameter modeling via sensor feeds", "To calculate shipping times", "To provide offline print instruction leaflets only"], correctAnswer: 1 }, { id: "qq_1_1_2", question: "Which protocol is most widely used for sparse, high-frequency IoT data payloads?", options: ["HTTP POST", "MQTT / AMQP", "FTP", "SMTP"], correctAnswer: 1 }] }] as any,
       assignments: [{ id: "a_1_1", title: "Building an MQTT Broker Topology Diagram", description: "Provide an architecture document or file showing the data flow from physical Raspberry Pi nodes to an Express endpoint and the final CAD visual canvas.", dueDate: "Within 7 days", status: "pending" }] as any,
       enrollmentCount: 1620, ratingAverage: 4.8, isPublished: true,
@@ -119,8 +119,8 @@ async function main() {
     create: {
       id: "c_2", title: "Industrial Robotics, CNC Machining & PLC Programming", headline: "Program complex assembly loops and smart manufacturing schedules",
       description: "An advanced curriculum focusing on 6-axis arm programming, G-code Generation, ladder logic, Siemens S7-1200 setups, and real-time safety protocols in smart manufacturing layouts.",
-      category: "Industrial Robotics", level: "Advanced", duration: "22 Hours", instructorId: "u_instructor", instructorName: "Dr. Javaid Butt", price: 89, isFree: false,
-      image: "https://images.unsplash.com/photo-1561557944-6e7860d1a7eb?w=600&h=400&fit=crop",
+      category: "Industrial Robotics", level: "Advanced", duration: "22 Hours", instructorId: "u_instructor", instructorName: "Dr. xyz", price: N/A, isFree: false,
+      image: "https://shorturl.at/FGVgK",
       lessons: LESSONS_C2 as any, quizzes: [{ id: "q_2_1", title: "Ladder Logic & CNC G-Code Quiz", passingScore: 75, questions: [{ id: "qq_2_1_1", question: "What is the function of the G01 command in CNC programming?", options: ["Rapid travel position search", "Linear intervention feed interpolation", "Circular rotation interpolation", "Pause application for coolant induction"], correctAnswer: 1 }] }] as any,
       assignments: [] as any,
       enrollmentCount: 940, ratingAverage: 4.7, isPublished: true,
@@ -134,11 +134,11 @@ async function main() {
       id: "c_101", title: "Digital Manufacturing Academy Course 101",
       headline: "Comprehensive TNE British Council & BCU Certified Core Competency Curriculum",
       description: "An expert-designed certification pathway covering the complete Industrial Evolution from Industry 4.0 to Industry 5.0 and emerging 6.0 cognitive networks.",
-      category: "Smart Factory", level: "Advanced", duration: "36 Hours", instructorId: "u_instructor", instructorName: "Dr. Javaid Butt",
+      category: "Smart Factory", level: "Advanced", duration: "36 Hours", instructorId: "u_instructor", instructorName: "Dr. Javaid Butt","Ashikul alam khan","Dr.Muhammad Adnan"
       price: 0, isFree: true,
       image: "/course-cover.webp",
       lessons: LESSONS_C101 as any, quizzes: QUIZZES_C101 as any,
-      assignments: [{ id: "a_101_1", title: "Project Assignment: Industrial Digital Maturity & Roadmap Formulation", description: "Prepare an exhaustive Brownfield retrofitting plan or 5-stage transformation roadmap for an existing SME manufacturing floor.", dueDate: "Within 10 days", status: "pending" }] as any,
+      assignments: [{ id: "a_101_1", title: "Project Assignment: Industrial Digital Maturity & Roadmap Formulation", description: "Prepare an exhaustive Brownfield retrofitting plan or 5-stage transformation roadmap for an existing SME manufacturing floor.", dueDate: "Within 10 days", status: "approved" }] as any,
       enrollmentCount: 150, ratingAverage: 4.9, isPublished: true,
     },
     update: { price: 0, isFree: true, isPublished: true },
@@ -202,7 +202,7 @@ async function main() {
       users, courses, enrollments, messages, certificates, logs, invites,
       customRoles, mediaLibrary, bankAccounts, withdrawalRequests,
       assignmentSubmissions, webinarPosts, quizAttempts, learningPaths, events,
-      subscriptions, certTemplates, exams, examAttempts, payments,
+      subscriptions, certTemplates, exams, examAttempts, paymentRequests: payments,
       certDownloadHistory,
       cmsContent: cmsContent ? { pages: cmsContent.pages } : null,
       themeSettings: themeSettings?.data ?? null,

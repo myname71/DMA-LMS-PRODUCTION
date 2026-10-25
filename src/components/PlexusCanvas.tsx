@@ -15,6 +15,7 @@ const MAX_CONNECT_DIST = 140;
 const SPEED = 0.3;
 const NODE_COLOR = [96, 165, 250] as const;   // blue-400
 const LINE_COLOR  = [99, 179, 251] as const;  // slightly lighter blue
+const FRAME_MS = 1000 / 30; // 30fps is plenty for a background accent
 
 export default function PlexusCanvas({ className = '' }: { className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -37,6 +38,30 @@ export default function PlexusCanvas({ className = '' }: { className?: string })
     const particleCount =
       window.innerWidth < 768 ? PARTICLE_COUNT_MOBILE : PARTICLE_COUNT_DESKTOP;
 
+    // The glow halo used to be rebuilt with createRadialGradient for every
+    // particle on every frame — the single most expensive thing in this loop.
+    // It is identical each time, so render it once into an offscreen sprite.
+    const SPRITE = 64;
+    const glow = document.createElement('canvas');
+    glow.width = SPRITE;
+    glow.height = SPRITE;
+    const gctx = glow.getContext('2d');
+    if (gctx) {
+      const grad = gctx.createRadialGradient(SPRITE / 2, SPRITE / 2, 0, SPRITE / 2, SPRITE / 2, SPRITE / 2);
+      grad.addColorStop(0, `rgba(${NODE_COLOR[0]},${NODE_COLOR[1]},${NODE_COLOR[2]},0.35)`);
+      grad.addColorStop(1, `rgba(${NODE_COLOR[0]},${NODE_COLOR[1]},${NODE_COLOR[2]},0)`);
+      gctx.fillStyle = grad;
+      gctx.fillRect(0, 0, SPRITE, SPRITE);
+    }
+
+    // Pause the loop while the canvas is scrolled out of view or the tab is
+    // hidden — background animation must never steal input-ready main-thread time.
+    let inView = true;
+    const io = ('IntersectionObserver' in window)
+      ? new IntersectionObserver(entries => { inView = entries[0]?.isIntersecting ?? true; })
+      : null;
+    if (io) io.observe(canvas);
+
     const resize = () => {
       canvas.width  = canvas.offsetWidth;
       canvas.height = canvas.offsetHeight;
@@ -54,7 +79,15 @@ export default function PlexusCanvas({ className = '' }: { className?: string })
       }));
     };
 
-    const draw = () => {
+    let lastFrame = 0;
+
+    const draw = (now: number) => {
+      rafRef.current = requestAnimationFrame(draw);
+
+      if (document.hidden || !inView) { lastFrame = 0; return; }
+      if (now - lastFrame < FRAME_MS) return;
+      lastFrame = now;
+
       const w = canvas.width;
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
@@ -70,6 +103,7 @@ export default function PlexusCanvas({ className = '' }: { className?: string })
       }
 
       // Draw edges
+      ctx.lineWidth = 0.6;
       for (let i = 0; i < pts.length; i++) {
         for (let j = i + 1; j < pts.length; j++) {
           const dx   = pts[i].x - pts[j].x;
@@ -81,41 +115,34 @@ export default function PlexusCanvas({ className = '' }: { className?: string })
             ctx.moveTo(pts[i].x, pts[i].y);
             ctx.lineTo(pts[j].x, pts[j].y);
             ctx.strokeStyle = `rgba(${LINE_COLOR[0]},${LINE_COLOR[1]},${LINE_COLOR[2]},${alpha})`;
-            ctx.lineWidth = 0.6;
             ctx.stroke();
           }
         }
       }
 
-      // Draw nodes
+      // Draw nodes (glow sprite + core dot)
       for (const p of pts) {
-        // Glow halo
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.radius * 5);
-        grad.addColorStop(0, `rgba(${NODE_COLOR[0]},${NODE_COLOR[1]},${NODE_COLOR[2]},${p.opacity * 0.35})`);
-        grad.addColorStop(1, `rgba(${NODE_COLOR[0]},${NODE_COLOR[1]},${NODE_COLOR[2]},0)`);
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.radius * 5, 0, Math.PI * 2);
-        ctx.fillStyle = grad;
-        ctx.fill();
+        const halo = p.radius * 10;
+        ctx.globalAlpha = p.opacity;
+        ctx.drawImage(glow, p.x - halo / 2, p.y - halo / 2, halo, halo);
+        ctx.globalAlpha = 1;
 
-        // Core dot
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${NODE_COLOR[0]},${NODE_COLOR[1]},${NODE_COLOR[2]},${p.opacity})`;
         ctx.fill();
       }
-
-      rafRef.current = requestAnimationFrame(draw);
     };
 
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
     resize();
-    draw();
+    rafRef.current = requestAnimationFrame(draw);
 
     return () => {
       cancelAnimationFrame(rafRef.current);
       ro.disconnect();
+      io?.disconnect();
     };
   }, []);
 

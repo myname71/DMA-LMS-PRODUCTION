@@ -20,6 +20,7 @@ const AITutorBox = lazy(() => import('./components/AITutorBox'));
 const LearningPathsView = lazy(() => import('./components/LearningPathsView'));
 const CoursesView = lazy(() => import('./components/CoursesView'));
 const EventsView = lazy(() => import('./components/EventsView'));
+const Repository = lazy(() => import('./components/Repository'));
 const SearchModal = lazy(() => import('./components/SearchModal'));
 const AboutPage = lazy(() => import('./components/AboutPage'));
 const WebinarPage = lazy(() => import('./components/WebinarPage'));
@@ -670,6 +671,15 @@ export default function App() {
           />
         );
 
+      case 'repository':
+        return (
+          <Repository
+            currentUser={currentUser}
+            onRequireAuth={() => { setCurrentPage('register'); window.scrollTo(0, 0); }}
+            triggerToast={triggerToast}
+          />
+        );
+
       case 'contact':
         return (
           <div className="pt-24 pb-20 px-4 sm:px-6 lg:px-8 max-w-4xl mx-auto text-left" id="contact-view">
@@ -759,6 +769,7 @@ export default function App() {
             onEnrollInPath={handleEnrollInPath}
             onLaunchPlayer={(course) => setPlayerCourse(course)}
             onProfileUpdated={(user) => setCurrentUser(user)}
+            triggerToast={triggerToast}
           />
         ) : null;
 

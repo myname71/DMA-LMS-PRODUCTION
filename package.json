@@ -1,5 +1,5 @@
 {
-  "name": "digital-manufacturing-academy",
+  "name": "dma-lms-production",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -52,7 +52,7 @@
     "typescript": "^5.8.2",
     "vite": "^6.2.3"
   },
-  "description": "Digital Manufacturing Academy — British Council funded LMS platform. BCU & AIUB partnership.",
+  "description": "DMA-LMS-Production — Digital Manufacturing Academy LMS platform (British Council funded, BCU & AIUB partnership).",
   "keywords": [
     "lms",
     "digital-manufacturing",

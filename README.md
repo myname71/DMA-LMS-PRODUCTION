@@ -1,4 +1,4 @@
-Digital Manufacturing Academy — LMS & course management Platform
+DMA-LMS-Production — Digital Manufacturing Academy LMS & course management platform
 
 Tech Stack
 Layer	Technology
