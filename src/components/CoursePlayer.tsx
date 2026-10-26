@@ -289,7 +289,7 @@ export default function CoursePlayer({ course, currentUser, enrollment, onClose,
   const renderPlayer = (m: PlayerModule) => {
     // Play the lesson's real media when it has a public URL: video (YouTube,
     // Vimeo, Drive, any public link) or a PDF reader with a page slider.
-    if ((m.lessonType === 'video' || m.lessonType === 'pdf') && m.contentUrl) {
+    if ((m.lessonType === 'video' || m.lessonType === 'pdf' || m.lessonType === 'pptx' || m.lessonType === 'image') && m.contentUrl) {
       return (
         <LessonMedia
           lesson={{

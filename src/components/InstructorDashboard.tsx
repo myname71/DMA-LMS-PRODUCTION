@@ -21,7 +21,7 @@ interface InstructorDashboardProps {
   courses: Course[];
   enrollments: Enrollment[];
   logs: any[];
-  onCourseCreate: (coursePayload: any) => void;
+  onCourseCreate: (coursePayload: any) => Promise<any> | any;
   learningPaths?: LearningPath[];
   onPathCreate?: (pathPayload: any) => void;
   onRefresh?: () => void;
@@ -50,14 +50,21 @@ export default function InstructorDashboard({
   const [level, setLevel] = useState<'Beginner' | 'Intermediate' | 'Advanced'>('Intermediate');
   const [duration, setDuration] = useState("12 Hours");
   const [price, setPrice] = useState("49");
+  // Optional, editable "created by" display name + edit-in-place support
+  const [createdByName, setCreatedByName] = useState("");
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
 
   // Lessons within wizard
   const [lessons, setLessons] = useState<Lesson[]>([
     { id: 'lw_1', title: 'Course Overview & Scope', type: 'video', duration: '10 mins', contentUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', isRequired: true, videoSource: 'file' }
   ]);
   const [tempLessonTitle, setTempLessonTitle] = useState("");
-  const [tempLessonType, setTempLessonType] = useState<'video' | 'pdf' | 'assignment'>('video');
+  const [tempLessonType, setTempLessonType] = useState<'video' | 'pdf' | 'pptx' | 'image' | 'assignment'>('video');
   const [tempLessonDuration, setTempLessonDuration] = useState("15 mins");
+  // Module-wise document/image link + direct file upload (PDF / PPTX / images ≤ 20MB)
+  const [tempDocUrl, setTempDocUrl] = useState("");
+  const [tempDocFileName, setTempDocFileName] = useState("");
+  const [tempUploading, setTempUploading] = useState(false);
 
   // Rich builder parameters & interactive embeds
   const [tempVideoSource, setTempVideoSource] = useState<'file' | 'youtube' | 'vimeo'>('file');
@@ -99,8 +106,11 @@ export default function InstructorDashboard({
             ? 'https://player.vimeo.com/video/224392349' 
             : 'https://www.w3schools.com/html/mov_bbb.mp4';
       }
+    } else if (tempLessonType === 'pptx' || tempLessonType === 'image') {
+      // Module-wise link, or a file uploaded straight from this dashboard.
+      finalUrl = tempDocUrl.trim() || tempDriveFileLink || "";
     } else {
-      finalUrl = tempDriveFileLink ? tempDriveFileLink : 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
+      finalUrl = tempDocUrl.trim() || tempDriveFileLink || 'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf';
     }
 
     const newLesson: Lesson = {
@@ -121,9 +131,51 @@ export default function InstructorDashboard({
     setTempLessonTitle("");
     setTempRichText("");
     setTempVideoUrl("");
+    setTempDocUrl("");
+    setTempDocFileName("");
     setTempDriveFileId("");
     setTempDriveFileName("");
     setTempDriveFileLink("");
+  };
+
+  // ── Direct module upload: PDF / PPTX / images, max 20MB ─────────────────────
+  const COURSE_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
+  const COURSE_MEDIA_EXTS = ['pdf', 'ppt', 'pptx', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm'];
+
+  const handleModuleFileUpload = async (file?: File | null) => {
+    if (!file) return;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!COURSE_MEDIA_EXTS.includes(ext)) {
+      triggerToast(`Unsupported file type ".${ext}". Allowed: ${COURSE_MEDIA_EXTS.join(', ')}`, 'warn');
+      return;
+    }
+    if (file.size > COURSE_MEDIA_MAX_BYTES) {
+      triggerToast('File is too large — the maximum upload size is 20MB.', 'warn');
+      return;
+    }
+    setTempUploading(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Could not read the selected file'));
+        reader.readAsDataURL(file);
+      });
+      const resp = await fetch('/api/courses/media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: file.name, dataUrl }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.status !== 'success') throw new Error(data.error || 'Upload failed');
+      setTempDocUrl(data.url);
+      setTempDocFileName(file.name);
+      triggerToast(`${file.name} attached to this module.`);
+    } catch (err: any) {
+      triggerToast(err?.message || 'Upload failed.', 'warn');
+    } finally {
+      setTempUploading(false);
+    }
   };
 
   const moveLessonInWizard = (index: number, direction: 'up' | 'down') => {
@@ -180,7 +232,23 @@ export default function InstructorDashboard({
     setLessons(lessons.filter(l => l.id !== id));
   };
 
-  const triggerPublishCourse = () => {
+  const DEFAULT_LESSONS: Lesson[] = [
+    { id: 'lw_1', title: 'Course Overview & Scope', type: 'video', duration: '10 mins', contentUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', isRequired: true, videoSource: 'file' }
+  ];
+
+  const resetWizard = () => {
+    setTitle("");
+    setHeadline("");
+    setDescription("");
+    setCreatedByName("");
+    setEditingCourseId(null);
+    setWizardStep(1);
+    setLessons(DEFAULT_LESSONS.map(l => ({ ...l })));
+    setQuizQuestions([{ question: 'What is the standard speed limit for a G00 linear search G-Code parameter?', options: ['Fast positional search speed', 'Incremental slow milling feed'], correctAnswer: 0 }]);
+    setActiveTab('overview');
+  };
+
+  const triggerPublishCourse = async () => {
     if (!title.trim() || !description.trim()) {
       alert("Please supply your Course Outline Title and descriptive Synopsis.");
       return;
@@ -193,7 +261,46 @@ export default function InstructorDashboard({
       questions: quizQuestions.map((q, idx) => ({ id: `qqw_${idx}_${Date.now()}`, ...q }))
     };
 
-    onCourseCreate({
+    // "Created by" name is optional — it falls back to the signed-in account.
+    const displayName = createdByName.trim() || currentUser.name.replace(' (Instructor)', '');
+
+    // Editing an existing course → save through /api/courses/update.
+    if (editingCourseId) {
+      try {
+        const resp = await fetch("/api/courses/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            courseId: editingCourseId,
+            updates: {
+              title,
+              headline: headline || "",
+              description,
+              category,
+              level,
+              duration,
+              price: Number(price),
+              instructorName: displayName,
+              lessons,
+              quizzes: [quizPayload],
+            },
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok || data.status !== "success") {
+          alert(data.error || "Course update failed.");
+          return;
+        }
+        await onRefresh?.();
+        triggerToast("Course updated successfully.");
+        resetWizard();
+      } catch {
+        alert("Course update failed — network error.");
+      }
+      return;
+    }
+
+    const created = await onCourseCreate({
       title,
       headline: headline || "Certified Specialist competency modules",
       description,
@@ -202,21 +309,65 @@ export default function InstructorDashboard({
       duration,
       price: Number(price),
       instructorId: currentUser.id,
-      instructorName: currentUser.name.replace(' (Instructor)', ''),
+      instructorName: displayName,
       lessons,
       quizzes: [quizPayload],
     });
 
-    alert("Academy Course draft initialized successfully! It is live and public to all simulation users.");
-    
-    // Reset inputs
-    setTitle("");
-    setHeadline("");
-    setDescription("");
-    setWizardStep(1);
-    setLessons([{ id: 'lw_1', title: 'Course Overview & Scope', type: 'video', duration: '10 mins', contentUrl: 'https://www.w3schools.com/html/mov_bbb.mp4', isRequired: true }]);
-    setQuizQuestions([{ question: 'What is the standard speed limit for a G00 linear search G-Code parameter?', options: ['Fast positional search speed', 'Incremental slow milling feed'], correctAnswer: 0 }]);
-    setActiveTab('overview');
+    // The failure reason was already surfaced as a toast by App.tsx.
+    if (!created) return;
+
+    const isManager = currentUser.role === "admin" || currentUser.role === "super_admin";
+    if (isManager) {
+      alert("Course created and published — it is live for all students right away.");
+    } else {
+      alert("Course created! It is saved as a draft — use ‘Submit for review’ in My Courses to publish it after admin approval.");
+    }
+    resetWizard();
+  };
+
+  // Load an existing course back into the wizard (Edit Modules button).
+  const startEditCourse = (course: Course) => {
+    setEditingCourseId(course.id);
+    setTitle(course.title || "");
+    setHeadline(course.headline || "");
+    setDescription(course.description || "");
+    setCategory((course as any).category || "Digital Twin");
+    setLevel(((course as any).level || "Beginner") as 'Beginner' | 'Intermediate' | 'Advanced');
+    setDuration((course as any).duration || "");
+    setPrice(String((course as any).price ?? 0));
+    setCreatedByName(course.instructorName || "");
+    const existing = (course.lessons || []).map(l => ({ ...l }));
+    setLessons(existing.length ? existing : DEFAULT_LESSONS.map(l => ({ ...l })));
+    const firstQuiz = (course.quizzes || [])[0];
+    setQuizQuestions((firstQuiz?.questions || []).map((q: any) => ({
+      question: q.question,
+      options: [...(q.options || [])],
+      correctAnswer: Number(q.correctAnswer ?? 0),
+    })));
+    setWizardStep(2);
+    setActiveTab('create_course');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Submit a draft course for admin approval (Submit for review button).
+  const submitForReview = async (course: Course) => {
+    try {
+      const resp = await fetch('/api/courses/submit-for-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ courseId: course.id }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.status !== 'success') {
+        triggerToast(data.error || 'Could not submit the course for review.', 'warn');
+        return;
+      }
+      await onRefresh?.();
+      triggerToast('Course submitted for review — an admin will approve it to publish.');
+    } catch {
+      triggerToast('Could not submit the course for review.', 'warn');
+    }
   };
 
   return (
@@ -461,6 +612,17 @@ export default function InstructorDashboard({
                 </div>
 
                 <div>
+                  <label className="block text-xs font-bold uppercase text-slate-400 mb-1.5">Created by <span className="normal-case text-slate-500 font-medium text-[10px]">(optional — editable display name)</span></label>
+                  <input
+                    type="text"
+                    value={createdByName}
+                    onChange={e => setCreatedByName(e.target.value)}
+                    placeholder={`Defaults to ${currentUser.name.replace(' (Instructor)', '')}`}
+                    className="w-full text-xs p-3 rounded-lg glass-input text-white"
+                  />
+                </div>
+
+                <div>
                   <label className="block text-xs font-bold uppercase text-slate-400 mb-1.5">Extended Syllabus Synopsis *</label>
                   <textarea
                     value={description}
@@ -513,15 +675,19 @@ export default function InstructorDashboard({
                         value={tempLessonType}
                         onChange={e => {
                           setTempLessonType(e.target.value as any);
-                          // Reset video platform if switching away
+                          // Reset video platform / attachment when switching type
                           if (e.target.value !== 'video') {
                             setTempVideoSource('file');
                           }
+                          setTempDocUrl("");
+                          setTempDocFileName("");
                         }}
                         className="w-full text-xs p-2.5 rounded-lg glass-input text-slate-300"
                       >
                         <option value="video">Lecture Video Video Stream</option>
                         <option value="pdf">Document PDF Manual / Blueprint</option>
+                        <option value="pptx">PowerPoint / Slide Deck (PPTX)</option>
+                        <option value="image">Image / Diagram (auto-plays in player)</option>
                         <option value="assignment">Practical Lab Homework / Challenge</option>
                       </select>
                     </div>
@@ -593,6 +759,47 @@ export default function InstructorDashboard({
                         <span className="text-[9px] text-blue-400 font-mono font-bold uppercase">Google Workspace</span>
                       </div>
                       
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Paste module link (PDF / PPTX / image URL) *</label>
+                        <input
+                          type="text"
+                          value={tempDocUrl}
+                          onChange={e => setTempDocUrl(e.target.value)}
+                          placeholder="e.g. https://example.com/module/deck.pptx or https://…/notes.pdf"
+                          className="w-full text-xs p-2 rounded bg-slate-950 border border-white/5 text-slate-300 font-mono"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">…or upload the file directly (max 20MB)</span>
+                        <label className={`px-3 py-1.5 rounded-lg bg-blue-600/15 border border-blue-500/40 text-blue-300 text-[10px] font-bold uppercase cursor-pointer hover:bg-blue-600/25 transition-colors ${tempUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept=".pdf,.ppt,.pptx,image/*,video/mp4,video/webm"
+                            disabled={tempUploading}
+                            onChange={e => {
+                              handleModuleFileUpload(e.target.files?.[0]);
+                              e.target.value = '';
+                            }}
+                          />
+                          {tempUploading ? 'Uploading…' : 'Choose file'}
+                        </label>
+                      </div>
+
+                      {tempDocFileName && (
+                        <div className="p-2 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center justify-between font-mono animate-fade-in">
+                          <span className="truncate">✓ Attached: <b>{tempDocFileName}</b></span>
+                          <button
+                            type="button"
+                            onClick={() => { setTempDocUrl(''); setTempDocFileName(''); }}
+                            className="text-[9px] text-red-400 underline font-semibold uppercase hover:text-red-300"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
+
                       <GoogleDriveIntegration
                         compact={true}
                         selectedFileId={tempDriveFileId}
@@ -912,16 +1119,16 @@ export default function InstructorDashboard({
 
                     <div className="flex gap-2.5">
                       <button 
-                        onClick={() => alert("Syllabus modifying panel is pre-locked in current view.")}
+                        onClick={() => startEditCourse(course)}
                         className="flex-1 text-center py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-350 hover:bg-white/10 font-bold text-[10px] tracking-wide cursor-pointer transition-colors"
                       >
                         Edit Modules
                       </button>
                       <button 
-                        onClick={() => alert("Instructor capability verification validated.")}
+                        onClick={() => course.isPublished ? triggerToast('This course is already published.', 'success') : submitForReview(course)}
                         className="flex-1 text-center py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-[10px] cursor-pointer"
                       >
-                        Active published
+                        {course.isPublished ? 'Published ✓' : 'Submit for review'}
                       </button>
                     </div>
                   </div>

@@ -320,7 +320,8 @@ export default function App() {
     }
   };
 
-  // Course wizard publish
+  // Course wizard publish — returns the created course (or null on failure) so
+  // the wizard can report the real outcome instead of a blanket success alert.
   const handleCourseCreate = async (coursePayload: any) => {
     try {
       const resp = await fetch("/api/courses/create", {
@@ -329,12 +330,16 @@ export default function App() {
         body: JSON.stringify(coursePayload)
       });
       const data = await resp.json();
-      if (data.status === "success") {
+      if (resp.ok && data.status === "success") {
         await fetchDbState();
-        triggerToast("Academy course published successfully!");
+        return data.course || null;
       }
+      triggerToast(data.error || "Course creation failed.", "warn");
+      return null;
     } catch (err) {
       console.error("Course creation fault", err);
+      triggerToast("Course creation failed — network error.", "warn");
+      return null;
     }
   };
 
