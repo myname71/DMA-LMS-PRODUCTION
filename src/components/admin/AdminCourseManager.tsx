@@ -19,6 +19,7 @@ const emptyCreateForm = {
   duration: '12 Hours',
   price: '0',
   instructorId: '',
+  instructorName: '', // optional, editable "created by" display name
   isPublished: true,
 };
 
@@ -252,7 +253,7 @@ export default function AdminCourseManager({
         body: JSON.stringify({
           ...createForm,
           price: Number(createForm.price || 0),
-          instructorName: assignedUser?.name,
+          instructorName: String(createForm.instructorName || '').trim() || assignedUser?.name,
         }),
       });
       const data = await response.json();
@@ -299,6 +300,7 @@ export default function AdminCourseManager({
           </select>
           <input value={createForm.duration} onChange={e => setCreateForm({ ...createForm, duration: e.target.value })} placeholder="Duration" className="glass-input p-2.5 rounded-lg text-xs text-white" />
           <input type="number" value={createForm.price} onChange={e => setCreateForm({ ...createForm, price: e.target.value })} placeholder="Price" className="glass-input p-2.5 rounded-lg text-xs text-white" />
+          <input value={createForm.instructorName || ''} onChange={e => setCreateForm({ ...createForm, instructorName: e.target.value })} placeholder="Created by (optional display name)" className="glass-input p-2.5 rounded-lg text-xs text-white md:col-span-2" />
         </div>
         <button onClick={createCourse} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
           Create Course
@@ -403,4 +405,4 @@ export default function AdminCourseManager({
       </div>
     </div>
   );
-}
+}

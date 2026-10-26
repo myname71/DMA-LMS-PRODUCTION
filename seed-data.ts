@@ -95,7 +95,7 @@ export const SEED_COURSES: any[] = [
     duration: "22 Hours",
     instructorId: "u_instructor",
     instructorName: "Dr. xyz",
-    price: N/A,
+    price: 0,
     isFree: false,
     image: "https://shorturl.at/FGVgK",
     lessons: [

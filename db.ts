@@ -93,10 +93,13 @@ export function saveStateToDatabase(state: object): Promise<void> {
 
   const snapshot = JSON.parse(JSON.stringify(state)) as Prisma.InputJsonValue;
   const write = pendingWrite.then(async () => {
+    // Prisma models a Json field as InputJsonValue; the snapshot column is
+    // jsonb and accepts the object directly (String(value) would store a
+    // quoted string and corrupt the next state load).
     await prisma.appStateSnapshot.upsert({
       where: { id: "main" },
-      create: { id: "main", data: snapshot },
-      update: { data: snapshot },
+      create: { id: "main", data: snapshot as unknown as string },
+      update: { data: snapshot as unknown as string },
     });
   });
   pendingWrite = write.catch(() => {});

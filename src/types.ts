@@ -61,7 +61,7 @@ export interface Lesson {
   id: string;
   title: string;
   duration: string;
-  type: 'video' | 'pdf' | 'assignment' | 'pptx';
+  type: 'video' | 'pdf' | 'assignment' | 'pptx' | 'image';
   contentUrl: string; // Video URL or Document preview
   isRequired: boolean;
   isCompleted?: boolean;

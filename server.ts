@@ -327,7 +327,8 @@ const app = express();
 const defaultJsonParser = express.json({ limit: "10mb" });
 const uploadJsonParser = express.json({ limit: "40mb" });
 app.use((req: Request, res: Response, next: NextFunction) => {
-  const isUpload = req.method === "POST" && req.path === "/api/study-materials";
+  const isUpload = req.method === "POST" &&
+    (req.path === "/api/study-materials" || req.path === "/api/courses/media");
   (isUpload ? uploadJsonParser : defaultJsonParser)(req, res, next);
 });
 app.use(cookieParser());
@@ -704,11 +705,31 @@ app.post(
   async (req: Request, res: Response) => {
     const session = req.session!;
     const user = req.user || state.users.find((u: any) => u.id === session.userId);
-    const { title, headline, description, category, level, duration, price, image, isFree } = req.body;
+    const b = req.body || {};
+    const { title, headline, description, category, level, duration, price, image, isFree, lessons, quizzes } = b;
     if (!title || !category) {
       res.status(400).json({ error: "title and category required" });
       return;
     }
+    const isManager = session.role === "admin" || session.role === "super_admin";
+
+    // "Created by" name is optional and editable; falls back to the account name.
+    const requestedName = typeof b.instructorName === "string"
+      ? b.instructorName.trim().slice(0, 120)
+      : "";
+
+    // Admins / super_admins may hand the course to another instructor; everyone
+    // else always owns what they create.
+    let instructorId = session.userId;
+    let instructorName = requestedName || user?.name || "Instructor";
+    if (isManager && b.instructorId) {
+      const assigned = state.users.find((u: any) => u.id === b.instructorId);
+      if (assigned) {
+        instructorId = assigned.id;
+        instructorName = requestedName || assigned.name || instructorName;
+      }
+    }
+
     const course: any = {
       id: `c_${Date.now()}`,
       title,
@@ -717,16 +738,19 @@ app.post(
       category,
       level: level || "Beginner",
       duration: duration || "TBD",
-      instructorId: session.userId,
-      instructorName: user?.name || "Instructor",
+      instructorId,
+      instructorName,
       price: isFree ? 0 : price || 0,
       isFree: !!isFree,
       image: image || "",
-      isPublished: false,
-      approvalStatus: "draft",
+      // Admin / super_admin courses go live immediately — no publishing approval.
+      // Instructor courses stay drafts until submitted for review and approved.
+      isPublished: isManager,
+      approvalStatus: isManager ? "approved" : "draft",
       enrollmentCount: 0,
-      lessons: [],
-      quizzes: [],
+      lessons: Array.isArray(lessons) ? lessons : [],
+      quizzes: Array.isArray(quizzes) ? quizzes : [],
+      assignments: [],
       createdAt: new Date().toISOString(),
     };
     state.courses.push(course);
@@ -735,6 +759,90 @@ app.post(
     res.json({ status: "success", course });
   }
 );
+
+// ─── Course module media — direct PDF / PPTX / image upload (≤ 20MB) ─────────
+// Files are stored once in state.mediaLibrary and referenced by lessons through
+// GET /api/courses/media/:id, so course listings never ship file payloads.
+const COURSE_MEDIA_MAX_BYTES = 20 * 1024 * 1024; // 20MB
+const COURSE_MEDIA_EXTENSIONS = [
+  "pdf", "ppt", "pptx", "png", "jpg", "jpeg", "gif", "webp", "svg", "mp4", "webm",
+];
+const COURSE_MEDIA_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  ppt: "application/vnd.ms-powerpoint",
+  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif",
+  webp: "image/webp", svg: "image/svg+xml", mp4: "video/mp4", webm: "video/webm",
+};
+
+app.post(
+  "/api/courses/media",
+  requireApprovedInstructor(() => state),
+  (req: Request, res: Response) => {
+    const session = req.session!;
+    const b = req.body || {};
+    const name = String(b.name || "").trim().slice(0, 180) || "module-media";
+    const dataUrl = String(b.dataUrl || "").trim();
+    if (!dataUrl.startsWith("data:")) {
+      res.status(400).json({ error: "dataUrl (base64 data URL) is required" });
+      return;
+    }
+    const ext = (name.split(".").pop() || "").toLowerCase();
+    if (!COURSE_MEDIA_EXTENSIONS.includes(ext)) {
+      res.status(400).json({
+        error: `Unsupported file type ".${ext}". Allowed: ${COURSE_MEDIA_EXTENSIONS.join(", ")}`,
+      });
+      return;
+    }
+    const comma = dataUrl.indexOf(",");
+    const header = dataUrl.slice(5, comma);
+    const fileSize = base64Bytes(dataUrl.slice(comma + 1));
+    if (fileSize > COURSE_MEDIA_MAX_BYTES) {
+      res.status(413).json({ error: "File is too large — the maximum size is 20MB" });
+      return;
+    }
+    const declared = header.split(";")[0] || "";
+    const mimeType = declared && declared !== "application/octet-stream"
+      ? declared
+      : COURSE_MEDIA_MIME[ext] || "application/octet-stream";
+    const item = {
+      id: `cm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      name,
+      dataUrl,
+      type: mimeType.startsWith("image/") ? "image"
+        : mimeType.startsWith("video/") ? "video"
+        : "document",
+      mimeType,
+      fileSize,
+      uploaderId: session.userId,
+      usedAs: null,
+      uploadedAt: new Date().toISOString(),
+    };
+    state.mediaLibrary.push(item);
+    addLog(`Course media uploaded: ${name}`, "media_upload", session.userId);
+    saveState();
+    res.status(201).json({
+      status: "success",
+      url: `/api/courses/media/${item.id}`,
+      item: { id: item.id, name: item.name, mimeType, fileSize, uploadedAt: item.uploadedAt },
+    });
+  }
+);
+
+// Serve module media — lesson contentUrl points here.
+app.get("/api/courses/media/:id", (req: Request, res: Response) => {
+  const item = (state.mediaLibrary || []).find((m: any) => m.id === req.params.id);
+  if (!item || !item.dataUrl) {
+    res.status(404).json({ error: "Media not found" });
+    return;
+  }
+  const comma = item.dataUrl.indexOf(",");
+  const header = comma === -1 ? "" : item.dataUrl.slice(5, comma);
+  const mime = item.mimeType || header.split(";")[0] || "application/octet-stream";
+  res.setHeader("Content-Type", mime);
+  res.setHeader("Cache-Control", "public, max-age=86400");
+  res.send(Buffer.from(comma === -1 ? "" : item.dataUrl.slice(comma + 1), "base64"));
+});
 
 app.post("/api/courses/update", (req: Request, res: Response) => {
   const session = requireSession(req, res);
@@ -872,7 +980,9 @@ app.get("/api/db-state", (req: Request, res: Response) => {
   res.json({
     users: isAdmin ? state.users.map(safeUser) : [],
     courses: state.courses
-      .filter((c: any) => isAdmin || c.isPublished !== false)
+      // Instructors must also see their own drafts right after creating them,
+      // otherwise a successful create looks like a failure in the dashboard.
+      .filter((c: any) => isAdmin || c.isPublished !== false || (isInstructor && c.instructorId === session?.userId))
       .map((c: any) => safeCourse(c, isAdmin || (isInstructor && c.instructorId === session?.userId))),
     enrollments: session ? state.enrollments.filter((e: any) => isAdmin || e.userId === session.userId) : [],
     certificates: session ? (state.certificates || []).filter((c: any) => isAdmin || c.userId === session.userId) : [],

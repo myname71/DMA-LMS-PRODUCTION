@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {
   FileText, ExternalLink, ChevronLeft, ChevronRight, Download,
-  Presentation, Video, AlertCircle, Layers,
+  Presentation, Video, AlertCircle, Layers, Image as ImageIcon,
 } from 'lucide-react';
-import { resolveVideoEmbed, isPublicDocument, pdfEmbedUrl } from '../lib/media';
+import { resolveVideoEmbed, isPublicDocument, pdfEmbedUrl, absoluteUrl } from '../lib/media';
 
 export interface LessonLike {
   id?: string;
@@ -55,6 +55,34 @@ export default function LessonMedia({ lesson }: { lesson: LessonLike }) {
   }
 
   // ── pdf (page slider via the browser PDF viewer) ────────────────────────────
+  // ── image (renders the moment the module opens) ───────────────────────────
+  if (type === 'image') {
+    if (!url) {
+      return <Notice icon={ImageIcon} title="No image attached" body="Add an image link, or upload an image file (max 20MB) to this module from the course editor." raw={url} />;
+    }
+    return (
+      <div className="relative w-full rounded-xl overflow-hidden border border-white/5 shadow-2xl bg-slate-950">
+        <div className="flex items-center justify-between gap-3 px-4 py-2 bg-slate-900/90 border-b border-white/5">
+          <div className="flex items-center gap-1.5 text-[10px] font-mono text-blue-400 font-extrabold tracking-wider uppercase truncate">
+            <ImageIcon className="w-3.5 h-3.5 shrink-0" />
+            <span className="truncate">Image · {title}</span>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <a href={url} target="_blank" rel="noreferrer"
+              className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition-colors" title="Open in a new tab">
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <a href={url} download
+              className="p-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 transition-colors" title="Download image">
+              <Download className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </div>
+        <img src={url} alt={title} className="w-full max-h-[70vh] object-contain bg-black" />
+      </div>
+    );
+  }
+
   if (type === 'pdf') {
     const [page, setPage] = useState(1);
     if (!isPublicDocument(url)) {
@@ -106,19 +134,45 @@ export default function LessonMedia({ lesson }: { lesson: LessonLike }) {
   if (type === 'pptx' || type === 'slides') {
     const slides = Array.isArray(lesson.slides) ? lesson.slides : [];
     if (slides.length > 0) return <SlideDeck title={title} slides={slides} url={url} />;
+    if (url.startsWith('data:')) {
+      // Directly uploaded .pptx — no browser renders it inline, so offer the file.
+      return (
+        <div className="relative w-full rounded-xl border border-white/5 bg-slate-950/70 p-6 space-y-3 text-center">
+          <Presentation className="w-8 h-8 text-blue-400 mx-auto" />
+          <p className="text-sm text-slate-300 font-bold">{title}</p>
+          <p className="text-xs text-slate-500">Uploaded PowerPoint deck — download it to open in PowerPoint.</p>
+          <a href={url} download={title}
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer">
+            <Download className="w-3.5 h-3.5" /> Download deck
+          </a>
+        </div>
+      );
+    }
     if (isPublicDocument(url)) {
+      const abs = absoluteUrl(url);
+      const native = /docs\.google\.com|officeapps\.live\.com|sharepoint\.com|1drv\.ms|slideshare\.net/i.test(abs);
+      // Plain .pptx/.ppt links need the Office Online viewer; Google/Office
+      // links already embed natively.
+      const embedSrc = native
+        ? abs
+        : `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(abs)}`;
       return (
         <div className="relative w-full rounded-xl overflow-hidden border border-white/5 shadow-2xl bg-slate-950">
           <div className="flex items-center justify-between px-4 py-2 bg-slate-900/90 border-b border-white/5">
             <div className="flex items-center gap-1.5 text-[10px] font-mono text-blue-400 font-extrabold tracking-wider uppercase">
               <Presentation className="w-3.5 h-3.5" /> Slide deck (embedded)
             </div>
-            <a href={url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-400 hover:underline flex items-center gap-1">
-              Open <ExternalLink className="w-3 h-3" />
-            </a>
+            <div className="flex items-center gap-2">
+              <a href={abs} download className="text-[10px] text-slate-400 hover:underline flex items-center gap-1">
+                <Download className="w-3 h-3" /> Download
+              </a>
+              <a href={abs} target="_blank" rel="noreferrer" className="text-[10px] text-blue-400 hover:underline flex items-center gap-1">
+                Open <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
           </div>
           <div style={{ position: 'relative', paddingTop: '56.25%' }}>
-            <iframe src={url} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} allowFullScreen title={title} />
+            <iframe src={embedSrc} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} allowFullScreen title={title} />
           </div>
         </div>
       );

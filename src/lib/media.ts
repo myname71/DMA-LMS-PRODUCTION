@@ -57,9 +57,26 @@ export function resolveVideoEmbed(rawUrl?: string | null, videoSource?: string):
   return { kind: 'none' };
 }
 
-/** A PDF lesson must point at a public http(s) document. */
+/**
+ * A PDF/document lesson must point at something the browser can fetch:
+ * a public http(s) URL, a same-origin module upload, or an inline PDF.
+ */
 export function isPublicDocument(url?: string | null): boolean {
-  return !!url && /^https?:\/\//i.test(url.trim());
+  if (!url) return false;
+  const u = url.trim();
+  return /^https?:\/\//i.test(u)
+    || /^\/api\/courses\/media\//.test(u)
+    || /^data:application\/pdf/i.test(u);
+}
+
+/**
+ * Resolve a same-origin media path (e.g. /api/courses/media/…) to an absolute
+ * URL — external viewers such as the Office Online viewer need one.
+ */
+export function absoluteUrl(url: string): string {
+  if (/^https?:\/\//i.test(url) || url.startsWith('data:')) return url;
+  if (typeof window !== 'undefined' && url.startsWith('/')) return `${window.location.origin}${url}`;
+  return url;
 }
 
 /**

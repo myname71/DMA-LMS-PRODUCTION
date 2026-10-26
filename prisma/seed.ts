@@ -72,15 +72,15 @@ async function main() {
 
   await prisma.appUser.upsert({
     where: { email: SEED_SUPER_ADMIN_EMAIL! },
-    create: { name: "DMA Super Admin", email: admin@digitalmanufacturing.academy, password: superHash, role: "super_admin", isApproved: true, subscriptionPlan: "enterprise", mustChangePassword: true },
-    update: { email: admin@digitalmanufacturing.academy, password: superHash, role: "super_admin", isApproved: true, mustChangePassword: true },
+    create: { name: "DMA Super Admin", email: "admin@digitalmanufacturing.academy", password: superHash, role: "super_admin", isApproved: true, subscriptionPlan: "enterprise", mustChangePassword: true },
+    update: { email: "admin@digitalmanufacturing.academy", password: superHash, role: "super_admin", isApproved: true, mustChangePassword: true },
   });
   console.log(`[SEED] Super Admin created: ${SEED_SUPER_ADMIN_EMAIL}`);
 
   await prisma.appUser.upsert({
     where: { email: SEED_ADMIN_EMAIL! },
-    create: { name: "Digital Manufacturing Admin", email: digital.mfg2026@gmail.com, password: hash, role: "admin", isApproved: true, subscriptionPlan: "pro", mustChangePassword: true },
-    update: { email: digital.mfg2026@gmail.com, password: hash, role: "admin", isApproved: true, mustChangePassword: true },
+    create: { name: "Digital Manufacturing Admin", email: "digital.mfg2026@gmail.com", password: hash, role: "admin", isApproved: true, subscriptionPlan: "pro", mustChangePassword: true },
+    update: { email: "digital.mfg2026@gmail.com", password: hash, role: "admin", isApproved: true, mustChangePassword: true },
   });
   console.log(`[SEED] Admin created: ${SEED_ADMIN_EMAIL}`);
 
@@ -119,7 +119,7 @@ async function main() {
     create: {
       id: "c_2", title: "Industrial Robotics, CNC Machining & PLC Programming", headline: "Program complex assembly loops and smart manufacturing schedules",
       description: "An advanced curriculum focusing on 6-axis arm programming, G-code Generation, ladder logic, Siemens S7-1200 setups, and real-time safety protocols in smart manufacturing layouts.",
-      category: "Industrial Robotics", level: "Advanced", duration: "22 Hours", instructorId: "u_instructor", instructorName: "Dr. xyz", price: N/A, isFree: false,
+      category: "Industrial Robotics", level: "Advanced", duration: "22 Hours", instructorId: "u_instructor", instructorName: "Dr. xyz", price: 0, isFree: false,
       image: "https://shorturl.at/FGVgK",
       lessons: LESSONS_C2 as any, quizzes: [{ id: "q_2_1", title: "Ladder Logic & CNC G-Code Quiz", passingScore: 75, questions: [{ id: "qq_2_1_1", question: "What is the function of the G01 command in CNC programming?", options: ["Rapid travel position search", "Linear intervention feed interpolation", "Circular rotation interpolation", "Pause application for coolant induction"], correctAnswer: 1 }] }] as any,
       assignments: [] as any,
@@ -134,7 +134,7 @@ async function main() {
       id: "c_101", title: "Digital Manufacturing Academy Course 101",
       headline: "Comprehensive TNE British Council & BCU Certified Core Competency Curriculum",
       description: "An expert-designed certification pathway covering the complete Industrial Evolution from Industry 4.0 to Industry 5.0 and emerging 6.0 cognitive networks.",
-      category: "Smart Factory", level: "Advanced", duration: "36 Hours", instructorId: "u_instructor", instructorName: "Dr. Javaid Butt","Ashikul alam khan","Dr.Muhammad Adnan"
+      category: "Smart Factory", level: "Advanced", duration: "36 Hours", instructorId: "u_instructor", instructorName: "Dr. Javaid Butt, Ashikul alam khan, Dr.Muhammad Adnan",
       price: 0, isFree: true,
       image: "/course-cover.webp",
       lessons: LESSONS_C101 as any, quizzes: QUIZZES_C101 as any,
@@ -208,7 +208,7 @@ async function main() {
       themeSettings: themeSettings?.data ?? null,
       siteNotice: null,
     })) as Prisma.InputJsonValue;
-    await prisma.appStateSnapshot.create({ data: { id: "main", data } });
+    await prisma.appStateSnapshot.create({ data: { id: "main", data: data as unknown as string } });
     console.log("[SEED] Initial application-state snapshot created");
   }
 
