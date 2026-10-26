@@ -1,12 +1,14 @@
-/** Throwaway smoke test — boots the real server (tsx) in a temp dir and
- * exercises the new course-create / module-media flows over HTTP. */
+/** Standalone end-to-end smoke test for course creation + module media.
+ * Boots the real server (tsx) in a temp dir and drives the flows over HTTP.
+ * Run from the repo root:  node tests/course-flow.smoke.mjs  */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import net from "node:net";
+import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 function freePort() {
   return new Promise((resolve, reject) => {
     const s = net.createServer();
