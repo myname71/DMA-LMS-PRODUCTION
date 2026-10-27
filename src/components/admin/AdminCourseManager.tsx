@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Check, ChevronDown, Plus, Save, Trash2, Upload, X } from 'lucide-react';
 import { Course, User } from '../../types';
+import { getAuthHeaders } from '../../lib/session';
 
 interface AdminCourseManagerProps {
   currentUser: User;
@@ -75,6 +76,7 @@ export default function AdminCourseManager({
   const [draft, setDraft] = useState<any | null>(null);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [saving, setSaving] = useState(false);
+  const [uploadingLessonId, setUploadingLessonId] = useState<string | null>(null);
   const [newQuestion, setNewQuestion] = useState({ question: '', options: ['', '', '', ''], correctAnswer: 0 });
   const [bulkQuizId, setBulkQuizId] = useState<string | null>(null);
   const [bulkText, setBulkText] = useState('');
@@ -127,6 +129,49 @@ export default function AdminCourseManager({
       lessons: current.lessons.filter((lesson: any) => lesson.id !== lessonId),
       quizzes: current.quizzes.map((quiz: any) => quiz.moduleId === lessonId ? { ...quiz, moduleId: null, moduleTitle: 'Course assessment' } : quiz),
     } : current);
+  };
+
+  const COURSE_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
+  const COURSE_MEDIA_EXTS = ['pdf', 'ppt', 'pptx', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm'];
+
+  const handleModuleFileUpload = async (lessonId: string, file?: File | null) => {
+    if (!file) return;
+    const ext = (file.name.split('.').pop() || '').toLowerCase();
+    if (!COURSE_MEDIA_EXTS.includes(ext)) {
+      triggerToast(`Unsupported file type ".${ext}". Allowed: ${COURSE_MEDIA_EXTS.join(', ')}`, 'warn');
+      return;
+    }
+    if (file.size > COURSE_MEDIA_MAX_BYTES) {
+      triggerToast('File is too large — maximum is 20MB.', 'warn');
+      return;
+    }
+    setUploadingLessonId(lessonId);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('Could not read the selected file'));
+        reader.readAsDataURL(file);
+      });
+      const resp = await fetch('/api/courses/media', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ name: file.name, dataUrl }),
+      });
+      const data = await resp.json();
+      if (!resp.ok || data.status !== 'success') throw new Error(data.error || 'Upload failed');
+      const inferredType = ext === 'pdf' ? 'pdf'
+        : (ext === 'ppt' || ext === 'pptx') ? 'pptx'
+        : (ext === 'mp4' || ext === 'webm') ? 'video'
+        : 'image';
+      updateLesson(lessonId, { contentUrl: data.url, type: inferredType });
+      triggerToast(`${file.name} attached to module.`);
+    } catch (err: any) {
+      triggerToast(err?.message || 'Upload failed.', 'warn');
+    } finally {
+      setUploadingLessonId(null);
+    }
   };
 
   const addQuiz = (moduleId: string | null, isFinal = false) => {
@@ -339,12 +384,50 @@ export default function AdminCourseManager({
                 <h4 className="text-xs font-bold uppercase text-slate-300">Modules</h4>
                 <button onClick={addLesson} className="text-xs text-blue-400 hover:text-blue-300 font-bold cursor-pointer"><Plus className="w-3.5 h-3.5 inline" /> Add module</button>
               </div>
+              <p className="text-[10px] text-slate-500">Each module can use a public URL (PDF / PPTX / video) or a direct upload (max 20MB). PDF/PPTX play as a page slider in the course player.</p>
               {(draft.lessons || []).map((lesson: any, index: number) => (
-                <div key={lesson.id} className="flex items-center gap-2">
-                  <span className="text-[10px] text-slate-500 w-5">{index + 1}</span>
-                  <input value={lesson.title || ''} onChange={e => updateLesson(lesson.id, { title: e.target.value })} className="glass-input p-2 rounded-lg text-xs text-white flex-1" />
-                  <button onClick={() => addQuiz(lesson.id)} className="px-2.5 py-2 rounded-lg border border-blue-500/20 text-blue-400 text-[10px] font-bold cursor-pointer">+ Module MCQ</button>
-                  <button onClick={() => removeLesson(lesson.id)} className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                <div key={lesson.id} className="p-3 rounded-xl border border-white/10 bg-slate-950/40 space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] text-slate-500 w-5">{index + 1}</span>
+                    <input value={lesson.title || ''} onChange={e => updateLesson(lesson.id, { title: e.target.value })} className="glass-input p-2 rounded-lg text-xs text-white flex-1 min-w-[140px]" placeholder="Module title" />
+                    <select
+                      value={lesson.type || 'video'}
+                      onChange={e => updateLesson(lesson.id, { type: e.target.value })}
+                      className="glass-input p-2 rounded-lg text-xs text-white"
+                    >
+                      <option value="video">Video</option>
+                      <option value="pdf">PDF (page slider)</option>
+                      <option value="pptx">PPTX / Slides</option>
+                      <option value="image">Image</option>
+                      <option value="assignment">Assignment</option>
+                    </select>
+                    <button onClick={() => addQuiz(lesson.id)} className="px-2.5 py-2 rounded-lg border border-blue-500/20 text-blue-400 text-[10px] font-bold cursor-pointer">+ Module MCQ</button>
+                    <button onClick={() => removeLesson(lesson.id)} className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                    <input
+                      value={lesson.contentUrl || ''}
+                      onChange={e => updateLesson(lesson.id, { contentUrl: e.target.value })}
+                      className="glass-input p-2 rounded-lg text-xs text-white flex-1 font-mono"
+                      placeholder="Content URL (YouTube / PDF / PPTX / mp4 / Drive preview…)"
+                    />
+                    <label className={`px-3 py-2 rounded-lg bg-blue-600/15 border border-blue-500/40 text-blue-300 text-[10px] font-bold uppercase cursor-pointer hover:bg-blue-600/25 whitespace-nowrap ${uploadingLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <input
+                        type="file"
+                        className="hidden"
+                        accept=".pdf,.ppt,.pptx,image/*,video/mp4,video/webm"
+                        disabled={uploadingLessonId === lesson.id}
+                        onChange={e => {
+                          handleModuleFileUpload(lesson.id, e.target.files?.[0]);
+                          e.target.value = '';
+                        }}
+                      />
+                      {uploadingLessonId === lesson.id ? 'Uploading…' : 'Upload file'}
+                    </label>
+                  </div>
+                  {lesson.contentUrl && (
+                    <p className="text-[9px] text-emerald-400/80 font-mono truncate">Attached: {lesson.contentUrl}</p>
+                  )}
                 </div>
               ))}
               <button onClick={() => addQuiz(null, true)} className="px-3 py-2 rounded-lg border border-purple-500/30 text-purple-300 text-xs font-bold cursor-pointer">+ Add Final Course Exam</button>
