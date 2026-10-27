@@ -15,6 +15,7 @@ import InstructorRevenue from './InstructorRevenue';
 import InstructorRepository from './InstructorRepository';
 import AssessmentModule from './assessment/AssessmentModule';
 import Leaderboard from './Leaderboard';
+import { getAuthHeaders } from '../lib/session';
 
 interface InstructorDashboardProps {
   currentUser: User;
@@ -163,7 +164,8 @@ export default function InstructorDashboard({
       });
       const resp = await fetch('/api/courses/media', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ name: file.name, dataUrl }),
       });
       const data = await resp.json();
