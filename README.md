@@ -2,21 +2,30 @@ DMA-LMS-Production — Digital Manufacturing Academy LMS & course management pla
 
 Tech Stack
 Layer	Technology
-Runtime	Node.js ≥ 20
+Runtime	Node.js ≥ 22
 Language	TypeScript
 Framework	Express.js
-Frontend	React 19 + Vite + Tailwind CSS v4
+Node version → 22, .nvmrc also pins it to 22.
+
+Entry file → dist/server.cjs instead — simpler, no wrapper needed, and the comment confirms it works.
+(dist/server.cjs) is the safer Hostinger choice.
+
+Framework on Hostinger → Express ✅
+
+Install command: npm ci --omit=dev
+
+Start command: npm start
 ORM	Prisma 5
 Database	PostgreSQL via Supabase
 Prerequisites
-Node.js ≥ 20.0.0 and npm ≥ 10.0.0
+Node.js ≥ 22.0.0 and npm ≥ 10.0.0
 A Supabase project (PostgreSQL)
 
 Fill in .env — all required keys are documented in env.example. The critical ones are:
 Variable	Description
 DATABASE_URL	Supabase pooled connection string (PgBouncer, port 6543)
 DIRECT_URL	Supabase direct connection string (port 5432, for migrations)
-JWT_SECRET	Random string ≥ 32 characters
+JWT_SECRET	Random string ≥ 32 characters or 64 (recommended )
 SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD	First-boot admin account (required)
 SEED_SUPER_ADMIN_EMAIL / SEED_SUPER_ADMIN_PASSWORD	First-boot super-admin account (required)
 
