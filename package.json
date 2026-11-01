@@ -14,6 +14,7 @@
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "tsc --noEmit",
     "db:push": "prisma db push",
+    "db:migrate": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:generate": "prisma generate",
     "postinstall": "prisma generate",
@@ -29,6 +30,7 @@
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.2.3",
+    "esbuild": "^0.28.1",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
@@ -37,7 +39,9 @@
     "prisma": "^5.22.0",
     "qs": "^6.16.1",
     "react": "^19.0.1",
-    "react-dom": "^19.0.1"
+    "react-dom": "^19.0.1",
+    "tailwindcss": "^4.1.14",
+    "vite": "^6.2.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
@@ -46,12 +50,9 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
-    "esbuild": "^0.28.1",
     "supabase": "^2.120.0",
-    "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "^5.8.2",
-    "vite": "^6.2.3"
+    "typescript": "^5.8.2"
   },
   "description": "DMA-LMS-Production — Digital Manufacturing Academy LMS platform (British Council funded, BCU & AIUB partnership).",
   "keywords": [
