@@ -321,6 +321,7 @@ function normalizePlan(p: unknown): "basic" | "pro" | "advanced" | null {
 }
 
 const app = express();
+app.set("trust proxy", 1); // behind Hostinger's reverse proxy — trust the first hop for real client IPs
 
 // JSON body limit: 10mb everywhere, except the study-material upload route which
 // receives files as base64 payloads (25MB file ≈ 34MB base64) and gets 40mb.
