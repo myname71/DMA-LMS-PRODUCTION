@@ -11,6 +11,7 @@ import MediaLibraryTab from './admin/MediaLibraryTab';
 import ThemeEditorTab from './admin/ThemeEditorTab';
 import SiteNoticeTab from './admin/SiteNoticeTab';
 import AdminCourseManager from './admin/AdminCourseManager';
+import InstructorRepository from './InstructorRepository';
 
 export const isAdminUser = (user: User | null): boolean =>
   user?.role === 'admin' || user?.role === 'super_admin';
@@ -31,7 +32,7 @@ interface AdminPanelProps {
   triggerToast?: (msg: string, type?: 'success' | 'warn') => void;
 }
 
-type TabKey = 'users' | 'approvals' | 'course_approvals' | 'course_manager' | 'moderation' | 'activity_logs' | 'site_cms' | 'bulletin' | 'roles' | 'media' | 'theme';
+type TabKey = 'users' | 'approvals' | 'course_approvals' | 'course_manager' | 'repository' | 'moderation' | 'activity_logs' | 'site_cms' | 'bulletin' | 'roles' | 'media' | 'theme';
 
 export default function AdminPanel({
   currentUser,
@@ -81,6 +82,7 @@ export default function AdminPanel({
     { key: 'approvals', label: 'Instructors' },
     { key: 'course_approvals', label: 'Course Approvals' },
     { key: 'course_manager', label: 'Course Manager' },
+    { key: 'repository', label: 'Repository' },
     { key: 'moderation', label: 'Moderation' },
     { key: 'activity_logs', label: 'Activity Logs' },
     { key: 'site_cms', label: '🌐 Site CMS' },
@@ -197,7 +199,9 @@ export default function AdminPanel({
           <div className="space-y-6">
             <h3 className="text-sm font-bold uppercase text-slate-300">Pending Course Approval Queue</h3>
             {(() => {
-              const pending = courses.filter((c: any) => c.approvalStatus === 'pending' || (!c.isPublished && !c.approvalStatus));
+              // Only courses an instructor actually submitted for review. Drafts
+              // (approvalStatus === 'draft') stay out of the queue until submitted.
+              const pending = courses.filter((c: any) => c.approvalStatus === 'pending');
               if (pending.length === 0) return (
                 <div className="p-8 text-center rounded-xl glass-card text-slate-500 font-medium italic">
                   ✓ No courses awaiting review. All submitted courses have been processed.
@@ -254,6 +258,16 @@ export default function AdminPanel({
             users={users}
             onRefresh={onRefreshData}
             triggerToast={triggerToast}
+          />
+        )}
+
+        {/* ── Repository (study material uploads) ── */}
+        {activeTab === 'repository' && (
+          <InstructorRepository
+            currentUser={currentUser}
+            courses={courses}
+            triggerToast={triggerToast}
+            onRefresh={onRefreshData}
           />
         )}
 

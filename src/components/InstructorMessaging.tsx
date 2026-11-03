@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, MessageSquare, User as UserIcon, ChevronRight, Circle } from 'lucide-react';
 import { User } from '../types';
+import { getAuthHeaders } from '../lib/session';
 
 interface InstructorMessagingProps {
   currentUser: User;
@@ -21,7 +22,7 @@ export default function InstructorMessaging({ currentUser, triggerToast }: Instr
 
   const fetchMessages = async () => {
     try {
-      const resp = await fetch(`/api/messages/${currentUser.id}`);
+      const resp = await fetch(`/api/messages/${currentUser.id}`, { credentials: 'include', headers: getAuthHeaders() });
       const data = await resp.json();
       setMessages(data.messages || []);
     } catch {
@@ -70,7 +71,8 @@ export default function InstructorMessaging({ currentUser, triggerToast }: Instr
     try {
       const resp = await fetch('/api/messages/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           fromId: currentUser.id,
           fromName: currentUser.name,
@@ -102,7 +104,8 @@ export default function InstructorMessaging({ currentUser, triggerToast }: Instr
     try {
       const resp = await fetch('/api/messages/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           fromId: currentUser.id,
           fromName: currentUser.name,

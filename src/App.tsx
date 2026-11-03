@@ -29,6 +29,7 @@ const AssessmentModule = lazy(() => import('./components/assessment/AssessmentMo
 const CertificateModule = lazy(() => import('./components/certificates/CertificateModule'));
 const PaymentCheckout = lazy(() => import('./components/PaymentCheckout'));
 const CoursePlayer = lazy(() => import('./components/CoursePlayer'));
+import ForceChangePassword from './components/auth/ForceChangePassword';
 import SignInPage from './components/pages/SignInPage';
 import RegisterPage from './components/pages/RegisterPage';
 import ContactUsPage from './components/pages/ContactUsPage';
@@ -278,7 +279,8 @@ export default function App() {
     try {
       const resp = await fetch("/api/courses/enroll", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ userId: currentUser.id, courseId })
       });
       const resData = await resp.json();
@@ -298,7 +300,8 @@ export default function App() {
     try {
       const resp = await fetch("/api/courses/sync-progress", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify(payload)
       });
       const data = await resp.json();
@@ -326,7 +329,8 @@ export default function App() {
     try {
       const resp = await fetch("/api/courses/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify(coursePayload)
       });
       const data = await resp.json();
@@ -348,7 +352,8 @@ export default function App() {
     try {
       const resp = await fetch("/api/events/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify(eventPayload)
       });
       const data = await resp.json();
@@ -367,7 +372,8 @@ export default function App() {
     try {
       const resp = await fetch("/api/learning-paths/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify(pathPayload)
       });
       const data = await resp.json();
@@ -390,7 +396,8 @@ export default function App() {
     try {
       const resp = await fetch("/api/learning-paths/enroll", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers: { "Content-Type": "application/json", ...getAuthHeaders() },
         body: JSON.stringify({ userId: currentUser.id, pathId })
       });
       const data = await resp.json();
@@ -582,6 +589,24 @@ export default function App() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  // ─── Forced password-change completion ────────────────────────────────────
+  // Seeded accounts keep mustChangePassword until they set their own password;
+  // every /api/admin and /api/db-state call 403s until then, so the dashboard
+  // would otherwise render empty with no explanation.
+  const handlePasswordChanged = async () => {
+    setCurrentUser(prev => (prev ? { ...prev, mustChangePassword: false } : prev));
+    await fetchDbState();
+    triggerToast('Password updated — welcome aboard!');
+  };
+
+  const handleSignOut = async () => {
+    try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }); } catch { /* ignore */ }
+    clearSession();
+    setCurrentUser(null);
+    setCurrentPage('home');
+    window.scrollTo(0, 0);
   };
 
   // Render secondary static views
@@ -901,6 +926,18 @@ export default function App() {
         return <LandingPage courses={courses} onEnroll={handleEnrollUser} onLaunchPlayer={(course) => setPlayerCourse(course)} onExploreCategories={() => setCurrentPage('categories')} onExploreCourses={() => setCurrentPage('courses')} setRegisterOpen={setRegisterOpen} setLoginOpen={setLoginOpen} cmsContent={cmsContent} onSelectCourse={(c) => setCurrentPage('courses')} onResumeCourse={(courseId) => { const found = courses.find(c => c.id === courseId); if (found) setPlayerCourse(found); }} />;
     }
   };
+
+  // ── Gate: accounts using a temporary password must set their own first ────
+  if (currentUser?.mustChangePassword) {
+    return (
+      <ForceChangePassword
+        user={currentUser}
+        getAuthHeaders={getAuthHeaders}
+        onDone={handlePasswordChanged}
+        onSignOut={handleSignOut}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col justify-between font-sans relative antialiased overflow-x-hidden">

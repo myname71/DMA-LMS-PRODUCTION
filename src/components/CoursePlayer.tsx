@@ -211,7 +211,12 @@ export default function CoursePlayer({ course, currentUser, enrollment, onClose,
   const overallPct = Math.round((modules.filter(m => modStatus[m.id] === 'done').length / modules.length) * 100);
 
   const totalPages = (m: PlayerModule) => m.playerType === 'slides' ? (m.slides?.length || 1) : (m.pages?.length || 1);
-  const hasReachedEnd = (m: PlayerModule) => m.playerType === 'interactive' ? true : (slideIdx[m.id] || 0) >= totalPages(m) - 1;
+  const usesEmbeddedDocumentViewer = (m: PlayerModule) =>
+    !!m.contentUrl && (m.lessonType === 'pdf' || m.lessonType === 'pptx');
+  const hasReachedEnd = (m: PlayerModule) =>
+    m.playerType === 'interactive' || usesEmbeddedDocumentViewer(m)
+      ? true
+      : (slideIdx[m.id] || 0) >= totalPages(m) - 1;
 
   const stopAutoplay = useCallback(() => {
     if (autoplayTimer.current) clearInterval(autoplayTimer.current);
@@ -288,7 +293,7 @@ export default function CoursePlayer({ course, currentUser, enrollment, onClose,
   /* ── Renders ── */
   const renderPlayer = (m: PlayerModule) => {
     // Play the lesson's real media when it has a public URL: video (YouTube,
-    // Vimeo, Drive, any public link) or a PDF reader with a page slider.
+    // Vimeo, Drive, any public link), a PDF page slider, or a PowerPoint viewer.
     if ((m.lessonType === 'video' || m.lessonType === 'pdf' || m.lessonType === 'pptx' || m.lessonType === 'image') && m.contentUrl) {
       return (
         <LessonMedia
@@ -349,7 +354,7 @@ export default function CoursePlayer({ course, currentUser, enrollment, onClose,
   };
 
   const renderControls = (m: PlayerModule) => {
-    if (m.playerType === 'interactive') return null;
+    if (m.playerType === 'interactive' || usesEmbeddedDocumentViewer(m)) return null;
     return (
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 14 }}>
         <button onClick={handlePrev} disabled={curSlide === 0} className="ctrl-btn-player" style={{ background: '#0f1f44', border: '1px solid #1c2c55', color: curSlide === 0 ? '#3a4a6a' : '#e7eefc', padding: '8px 14px', borderRadius: 9, cursor: curSlide === 0 ? 'not-allowed' : 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>

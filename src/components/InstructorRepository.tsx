@@ -177,6 +177,17 @@ export default function InstructorRepository({
 
   return (
     <div className="space-y-8 text-left" id="instructor-repository">
+      {currentUser.role === 'instructor' && currentUser.isApproved === false && (
+        <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left">
+          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-bold text-amber-300">Your instructor account is pending approval</p>
+            <p className="text-xs text-amber-200/70 mt-1">
+              Uploads stay blocked until an administrator approves your account in the Admin Panel.
+            </p>
+          </div>
+        </div>
+      )}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Upload form */}
         <form

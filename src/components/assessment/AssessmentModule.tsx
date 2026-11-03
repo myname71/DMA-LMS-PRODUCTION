@@ -4,6 +4,7 @@ import {
   CheckCircle, XCircle, Clock, BarChart2, Upload, Star, AlertCircle,
   Play, RotateCcw, FileText, Calendar, Lock, TrendingUp, Award
 } from 'lucide-react';
+import { getAuthHeaders } from '../../lib/session';
 
 interface AssessmentModuleProps {
   currentUser: any;
@@ -19,7 +20,11 @@ type AssignmentView = 'list' | 'details' | 'submit' | 'review' | 'feedback';
 type ExamView = 'schedule' | 'attempt' | 'results';
 
 const API = (url: string, opts?: RequestInit) =>
-  fetch(url, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
+  fetch(url, {
+    credentials: 'include',
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders(), ...(opts?.headers || {}) },
+  });
 
 export default function AssessmentModule({ currentUser, courses, enrollments, embedded = false }: AssessmentModuleProps) {
   const [tab, setTab] = useState<TabType>('quizzes');

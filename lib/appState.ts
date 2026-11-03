@@ -41,6 +41,7 @@ export interface AppState {
   certDownloadHistory: any[];
   siteNotice: any;
   paymentRequests?: any[];
+  studyMaterials: any[];
 }
 
 export const state: AppState = {
@@ -51,6 +52,7 @@ export const state: AppState = {
   invites: [], themeSettings: null, webinarPosts: [],
   quizAttempts: [], exams: [], examAttempts: [],
   certTemplates: [], certDownloadHistory: [], siteNotice: null,
+  studyMaterials: [],
 };
 
 // These are overridden by server.ts after it wires up PostgreSQL/file I/O.

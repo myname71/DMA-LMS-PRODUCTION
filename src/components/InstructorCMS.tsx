@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Edit3, Save, X, Plus, Trash2, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Course, User } from '../types';
+import { getAuthHeaders } from '../lib/session';
 
 interface InstructorCMSProps {
   currentUser: User;
@@ -66,16 +67,19 @@ export default function InstructorCMS({ currentUser, courses, onRefresh, trigger
     try {
       const resp = await fetch('/api/courses/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           courseId: editingCourse.id,
-          title: editTitle,
-          headline: editHeadline,
-          description: editDescription,
-          price: Number(editPrice),
-          duration: editDuration,
-          level: editLevel,
-          lessons: editLessons,
+          updates: {
+            title: editTitle,
+            headline: editHeadline,
+            description: editDescription,
+            price: Number(editPrice),
+            duration: editDuration,
+            level: editLevel,
+            lessons: editLessons,
+          },
         }),
       });
       const data = await resp.json();
@@ -97,7 +101,8 @@ export default function InstructorCMS({ currentUser, courses, onRefresh, trigger
     try {
       const resp = await fetch('/api/courses/submit-for-review', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ courseId }),
       });
       const data = await resp.json();

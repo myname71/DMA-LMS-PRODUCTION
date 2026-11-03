@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Local runtime state (contains real users / password hashes — never commit)
+db_state.json
+db_state.json.tmp
+
+# Environment / secrets
+.env
+.env.*
+!.env.production.example
+
+# Local verification scratch space
+.verify-tmp/
+.freebuff/
+
+# Logs & editor noise
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# TypeScript incremental build info
+*.tsbuildinfo

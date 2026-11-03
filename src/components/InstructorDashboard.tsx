@@ -5,6 +5,7 @@ import {
   ArrowUp, ArrowDown, Type, Bold, List, Code, Video, Globe, FileText, Check
 } from 'lucide-react';
 import { Course, User, Lesson, Quiz, LearningPath, Enrollment } from '../types';
+import { getAuthHeaders } from '../lib/session';
 import GoogleDriveIntegration from './GoogleDriveIntegration';
 import LearningPathsView from './LearningPathsView';
 import InstructorCMS from './InstructorCMS';
@@ -15,7 +16,6 @@ import InstructorRevenue from './InstructorRevenue';
 import InstructorRepository from './InstructorRepository';
 import AssessmentModule from './assessment/AssessmentModule';
 import Leaderboard from './Leaderboard';
-import { getAuthHeaders } from '../lib/session';
 
 interface InstructorDashboardProps {
   currentUser: User;
@@ -271,7 +271,8 @@ export default function InstructorDashboard({
       try {
         const resp = await fetch("/api/courses/update", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          headers: { "Content-Type": "application/json", ...getAuthHeaders() },
           body: JSON.stringify({
             courseId: editingCourseId,
             updates: {
@@ -357,7 +358,8 @@ export default function InstructorDashboard({
     try {
       const resp = await fetch('/api/courses/submit-for-review', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ courseId: course.id }),
       });
       const data = await resp.json();

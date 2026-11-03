@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { CheckCircle, Clock, User as UserIcon, BookOpen, MessageSquare, Star, ChevronRight } from 'lucide-react';
 import { User } from '../types';
+import { getAuthHeaders } from '../lib/session';
 
 interface InstructorGradingProps {
   currentUser: User;
@@ -19,7 +20,7 @@ export default function InstructorGrading({ currentUser, triggerToast }: Instruc
   const fetchSubmissions = async () => {
     setLoading(true);
     try {
-      const resp = await fetch(`/api/assignments/instructor/${currentUser.id}`);
+      const resp = await fetch(`/api/assignments/instructor/${currentUser.id}`, { credentials: 'include', headers: getAuthHeaders() });
       const data = await resp.json();
       setSubmissions(data.submissions || []);
     } catch {
@@ -42,7 +43,8 @@ export default function InstructorGrading({ currentUser, triggerToast }: Instruc
     try {
       const resp = await fetch('/api/assignments/grade', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           submissionId: selected.id,
           grade,

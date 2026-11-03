@@ -6,6 +6,7 @@ import {
   MessageSquare, Trophy
 } from 'lucide-react';
 import { Course, User, Enrollment, Certificate, LearningPath } from '../types';
+import { getAuthHeaders } from '../lib/session';
 import LearningPathsView from './LearningPathsView';
 import Leaderboard from './Leaderboard';
 import LessonMedia from './LessonMedia';
@@ -86,7 +87,7 @@ export default function StudentDashboard({
     try {
       const r = await fetch('/api/profile', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         credentials: 'include',
         body: JSON.stringify({
           name: profileName,
@@ -112,7 +113,7 @@ export default function StudentDashboard({
 
   useEffect(() => {
     if (activeTab === 'messages') {
-      fetch(`/api/messages/${currentUser.id}`)
+      fetch(`/api/messages/${currentUser.id}`, { credentials: 'include', headers: getAuthHeaders() })
         .then(r => r.json())
         .then(d => setMessages(d.messages || []))
         .catch(() => {});
@@ -203,7 +204,8 @@ export default function StudentDashboard({
     try {
       const resp = await fetch('/api/assignments/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           assignmentId,
           courseId,
@@ -232,7 +234,8 @@ export default function StudentDashboard({
     try {
       await fetch('/api/messages/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           fromId: currentUser.id,
           fromName: currentUser.name,
@@ -244,7 +247,7 @@ export default function StudentDashboard({
         }),
       });
       setMsgText('');
-      const r = await fetch(`/api/messages/${currentUser.id}`);
+      const r = await fetch(`/api/messages/${currentUser.id}`, { credentials: 'include', headers: getAuthHeaders() });
       const d = await r.json();
       setMessages(d.messages || []);
     } catch {} finally {
@@ -258,7 +261,8 @@ export default function StudentDashboard({
     try {
       await fetch('/api/messages/send', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           fromId: currentUser.id,
           fromName: currentUser.name,
@@ -272,7 +276,7 @@ export default function StudentDashboard({
       setNewMsgOpen(false);
       setNewMsgTo('');
       setNewMsgBody('');
-      const r = await fetch(`/api/messages/${currentUser.id}`);
+      const r = await fetch(`/api/messages/${currentUser.id}`, { credentials: 'include', headers: getAuthHeaders() });
       const d = await r.json();
       setMessages(d.messages || []);
     } catch {} finally {

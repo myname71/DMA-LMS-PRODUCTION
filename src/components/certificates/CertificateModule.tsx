@@ -3,6 +3,7 @@ import {
   Award, Shield, Download, CheckCircle, XCircle, Search,
   Plus, Trash2, Edit3, Save, X, Eye, History, Palette, Star
 } from 'lucide-react';
+import { getAuthHeaders } from '../../lib/session';
 
 interface CertificateModuleProps {
   currentUser: any;
@@ -13,7 +14,11 @@ interface CertificateModuleProps {
 type TabType = 'my_certs' | 'verify' | 'templates' | 'history';
 
 const API = (url: string, opts?: RequestInit) =>
-  fetch(url, { credentials: 'include', headers: { 'Content-Type': 'application/json' }, ...opts });
+  fetch(url, {
+    credentials: 'include',
+    ...opts,
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders(), ...(opts?.headers || {}) },
+  });
 
 export default function CertificateModule({ currentUser, courses, enrollments }: CertificateModuleProps) {
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';

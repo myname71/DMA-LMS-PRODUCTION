@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { BookOpen, Check, ChevronDown, Plus, Save, Trash2, Upload, X } from 'lucide-react';
-import { Course, User } from '../../types';
+import { Course, Lesson, User } from '../../types';
 import { getAuthHeaders } from '../../lib/session';
 
 interface AdminCourseManagerProps {
@@ -76,10 +76,12 @@ export default function AdminCourseManager({
   const [draft, setDraft] = useState<any | null>(null);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [saving, setSaving] = useState(false);
-  const [uploadingLessonId, setUploadingLessonId] = useState<string | null>(null);
   const [newQuestion, setNewQuestion] = useState({ question: '', options: ['', '', '', ''], correctAnswer: 0 });
   const [bulkQuizId, setBulkQuizId] = useState<string | null>(null);
   const [bulkText, setBulkText] = useState('');
+  const [createLessons, setCreateLessons] = useState<Lesson[]>([]);
+  const [newLesson, setNewLesson] = useState({ title: '', type: 'pdf' as Lesson['type'], contentUrl: '' });
+  const [uploadingLessonId, setUploadingLessonId] = useState<string | null>(null);
 
   const instructors = useMemo(
     () => users.filter(user => user.role === 'instructor' || user.role === 'admin' || user.role === 'super_admin'),
@@ -112,10 +114,10 @@ export default function AdminCourseManager({
   };
 
   const addLesson = () => {
-    const lesson = {
+    const lesson: Lesson = {
       id: `module_${Date.now()}`,
       title: 'New Module',
-      type: 'video',
+      type: 'pdf',
       duration: '15 mins',
       contentUrl: '',
       isRequired: true,
@@ -123,28 +125,18 @@ export default function AdminCourseManager({
     setDraft((current: any) => current ? { ...current, lessons: [...(current.lessons || []), lesson] } : current);
   };
 
-  const removeLesson = (lessonId: string) => {
-    setDraft((current: any) => current ? {
-      ...current,
-      lessons: current.lessons.filter((lesson: any) => lesson.id !== lessonId),
-      quizzes: current.quizzes.map((quiz: any) => quiz.moduleId === lessonId ? { ...quiz, moduleId: null, moduleTitle: 'Course assessment' } : quiz),
-    } : current);
-  };
-
-  const COURSE_MEDIA_MAX_BYTES = 20 * 1024 * 1024;
-  const COURSE_MEDIA_EXTS = ['pdf', 'ppt', 'pptx', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm'];
-
-  const handleModuleFileUpload = async (lessonId: string, file?: File | null) => {
-    if (!file) return;
-    const ext = (file.name.split('.').pop() || '').toLowerCase();
-    if (!COURSE_MEDIA_EXTS.includes(ext)) {
-      triggerToast(`Unsupported file type ".${ext}". Allowed: ${COURSE_MEDIA_EXTS.join(', ')}`, 'warn');
+  const uploadModuleFile = async (file: File, onUrl: (url: string) => void, lessonId: string) => {
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
+    const allowed = ['pdf', 'ppt', 'pptx', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'mp4', 'webm'];
+    if (!allowed.includes(extension)) {
+      triggerToast(`Unsupported file type .${extension}.`, 'warn');
       return;
     }
-    if (file.size > COURSE_MEDIA_MAX_BYTES) {
-      triggerToast('File is too large — maximum is 20MB.', 'warn');
+    if (file.size > 20 * 1024 * 1024) {
+      triggerToast('File is too large — the maximum upload size is 20MB.', 'warn');
       return;
     }
+
     setUploadingLessonId(lessonId);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -153,25 +145,49 @@ export default function AdminCourseManager({
         reader.onerror = () => reject(new Error('Could not read the selected file'));
         reader.readAsDataURL(file);
       });
-      const resp = await fetch('/api/courses/media', {
+      const headers = new Headers(getAuthHeaders());
+      headers.set('Content-Type', 'application/json');
+      const response = await fetch('/api/courses/media', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        headers,
         body: JSON.stringify({ name: file.name, dataUrl }),
       });
-      const data = await resp.json();
-      if (!resp.ok || data.status !== 'success') throw new Error(data.error || 'Upload failed');
-      const inferredType = ext === 'pdf' ? 'pdf'
-        : (ext === 'ppt' || ext === 'pptx') ? 'pptx'
-        : (ext === 'mp4' || ext === 'webm') ? 'video'
-        : 'image';
-      updateLesson(lessonId, { contentUrl: data.url, type: inferredType });
+      const data = await response.json();
+      if (!response.ok || data.status !== 'success' || !data.url) {
+        throw new Error(data.error || 'Upload failed');
+      }
+      onUrl(data.url);
       triggerToast(`${file.name} attached to module.`);
-    } catch (err: any) {
-      triggerToast(err?.message || 'Upload failed.', 'warn');
+    } catch (error: any) {
+      triggerToast(error.message || 'Upload failed.', 'warn');
     } finally {
       setUploadingLessonId(null);
     }
+  };
+
+  const addCreateLesson = () => {
+    if (!newLesson.title.trim()) {
+      triggerToast('Enter a module title first.', 'warn');
+      return;
+    }
+    setCreateLessons(current => [...current, {
+      id: `module_${Date.now()}`,
+      title: newLesson.title.trim(),
+      type: newLesson.type,
+      duration: '15 mins',
+      contentUrl: newLesson.contentUrl.trim(),
+      isRequired: true,
+    }]);
+    setNewLesson({ title: '', type: 'pdf', contentUrl: '' });
+  };
+
+  const removeLesson = (lessonId: string) => {
+    setDraft((current: any) => current ? {
+      ...current,
+      lessons: current.lessons.filter((lesson: any) => lesson.id !== lessonId),
+      quizzes: current.quizzes.map((quiz: any) => quiz.moduleId === lessonId ? { ...quiz, moduleId: null, moduleTitle: 'Course assessment' } : quiz),
+    } : current);
   };
 
   const addQuiz = (moduleId: string | null, isFinal = false) => {
@@ -269,7 +285,8 @@ export default function AdminCourseManager({
       };
       const response = await fetch('/api/courses/update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ courseId: draft.id, updates }),
       });
       const data = await response.json();
@@ -294,17 +311,20 @@ export default function AdminCourseManager({
       const assignedUser = instructors.find(user => user.id === createForm.instructorId);
       const response = await fetch('/api/courses/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({
           ...createForm,
           price: Number(createForm.price || 0),
           instructorName: String(createForm.instructorName || '').trim() || assignedUser?.name,
+          lessons: createLessons,
         }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Course creation failed');
       await onRefresh();
       setCreateForm({ ...emptyCreateForm });
+      setCreateLessons([]);
       setSelectedCourseId(data.course.id);
       setDraft(copyCourse(data.course));
       triggerToast('Course created. Add modules and assessments below.');
@@ -347,7 +367,36 @@ export default function AdminCourseManager({
           <input type="number" value={createForm.price} onChange={e => setCreateForm({ ...createForm, price: e.target.value })} placeholder="Price" className="glass-input p-2.5 rounded-lg text-xs text-white" />
           <input value={createForm.instructorName || ''} onChange={e => setCreateForm({ ...createForm, instructorName: e.target.value })} placeholder="Created by (optional display name)" className="glass-input p-2.5 rounded-lg text-xs text-white md:col-span-2" />
         </div>
-        <button onClick={createCourse} disabled={saving} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
+        <div className="rounded-xl border border-white/10 bg-slate-950/30 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h5 className="text-xs font-bold text-slate-200">Course modules</h5>
+              <p className="text-[10px] text-slate-500 mt-1">Add PDF or PowerPoint links, or upload files directly (max 20MB each).</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_130px] gap-2">
+            <input value={newLesson.title} onChange={e => setNewLesson(current => ({ ...current, title: e.target.value }))} placeholder="Module title" className="glass-input p-2.5 rounded-lg text-xs text-white" />
+            <select value={newLesson.type} onChange={e => setNewLesson(current => ({ ...current, type: e.target.value as Lesson['type'] }))} className="glass-input p-2.5 rounded-lg text-xs text-white">
+              <option value="pdf">PDF</option><option value="pptx">PPTX</option><option value="video">Video</option><option value="image">Image</option><option value="assignment">Assignment</option>
+            </select>
+          </div>
+          <input value={newLesson.contentUrl} onChange={e => setNewLesson(current => ({ ...current, contentUrl: e.target.value }))} placeholder="Paste PDF / PPTX / media URL (optional if uploading)" className="glass-input p-2.5 rounded-lg text-xs text-white w-full" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className={`px-3 py-2 rounded-lg border border-blue-500/30 text-blue-300 text-xs font-bold cursor-pointer ${uploadingLessonId === 'new' ? 'opacity-50 pointer-events-none' : 'hover:bg-blue-500/10'}`}>
+              <Upload className="w-3.5 h-3.5 inline mr-1" />{uploadingLessonId === 'new' ? 'Uploading…' : 'Choose module file'}
+              <input type="file" className="hidden" accept=".pdf,.ppt,.pptx,image/*,video/mp4,video/webm" disabled={!!uploadingLessonId} onChange={e => { const file = e.target.files?.[0]; if (file) uploadModuleFile(file, url => setNewLesson(current => ({ ...current, contentUrl: url, type: file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : /\.pptx?$/i.test(file.name) ? 'pptx' : /\.(mp4|webm)$/i.test(file.name) ? 'video' : 'image' })), 'new'); e.target.value = ''; }} />
+            </label>
+            <button type="button" onClick={addCreateLesson} className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer"><Plus className="w-3.5 h-3.5 inline mr-1" /> Add module</button>
+          </div>
+          {createLessons.map((lesson, index) => (
+            <div key={lesson.id} className="flex items-center gap-2 rounded-lg bg-white/[0.03] p-2">
+              <span className="text-[10px] text-slate-500">{index + 1}.</span><span className="text-xs text-white flex-1 truncate">{lesson.title}</span><span className="text-[10px] uppercase text-blue-300">{lesson.type}</span>
+              {lesson.contentUrl && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+              <button type="button" onClick={() => setCreateLessons(current => current.filter(item => item.id !== lesson.id))} aria-label={`Remove ${lesson.title}`} className="p-1 text-rose-400 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          ))}
+        </div>
+        <button onClick={createCourse} disabled={saving || !!uploadingLessonId} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer">
           Create Course
         </button>
       </div>
@@ -384,50 +433,24 @@ export default function AdminCourseManager({
                 <h4 className="text-xs font-bold uppercase text-slate-300">Modules</h4>
                 <button onClick={addLesson} className="text-xs text-blue-400 hover:text-blue-300 font-bold cursor-pointer"><Plus className="w-3.5 h-3.5 inline" /> Add module</button>
               </div>
-              <p className="text-[10px] text-slate-500">Each module can use a public URL (PDF / PPTX / video) or a direct upload (max 20MB). PDF/PPTX play as a page slider in the course player.</p>
               {(draft.lessons || []).map((lesson: any, index: number) => (
-                <div key={lesson.id} className="p-3 rounded-xl border border-white/10 bg-slate-950/40 space-y-2">
-                  <div className="flex items-center gap-2 flex-wrap">
+                <div key={lesson.id} className="rounded-xl border border-white/10 bg-slate-950/25 p-3 space-y-2">
+                  <div className="flex items-center gap-2">
                     <span className="text-[10px] text-slate-500 w-5">{index + 1}</span>
-                    <input value={lesson.title || ''} onChange={e => updateLesson(lesson.id, { title: e.target.value })} className="glass-input p-2 rounded-lg text-xs text-white flex-1 min-w-[140px]" placeholder="Module title" />
-                    <select
-                      value={lesson.type || 'video'}
-                      onChange={e => updateLesson(lesson.id, { type: e.target.value })}
-                      className="glass-input p-2 rounded-lg text-xs text-white"
-                    >
-                      <option value="video">Video</option>
-                      <option value="pdf">PDF (page slider)</option>
-                      <option value="pptx">PPTX / Slides</option>
-                      <option value="image">Image</option>
-                      <option value="assignment">Assignment</option>
+                    <input value={lesson.title || ''} onChange={e => updateLesson(lesson.id, { title: e.target.value })} className="glass-input p-2 rounded-lg text-xs text-white flex-1" placeholder="Module title" />
+                    <select value={lesson.type || 'pdf'} onChange={e => updateLesson(lesson.id, { type: e.target.value })} className="glass-input p-2 rounded-lg text-xs text-white">
+                      <option value="pdf">PDF</option><option value="pptx">PPTX</option><option value="video">Video</option><option value="image">Image</option><option value="assignment">Assignment</option>
                     </select>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input value={lesson.contentUrl || ''} onChange={e => updateLesson(lesson.id, { contentUrl: e.target.value })} className="glass-input p-2 rounded-lg text-xs text-white flex-1 min-w-[220px]" placeholder="Paste module PDF / PPTX / media URL" />
+                    <label className={`px-2.5 py-2 rounded-lg border border-blue-500/20 text-blue-400 text-[10px] font-bold cursor-pointer ${uploadingLessonId === lesson.id ? 'opacity-50 pointer-events-none' : 'hover:bg-blue-500/10'}`}>
+                      <Upload className="w-3.5 h-3.5 inline mr-1" />{uploadingLessonId === lesson.id ? 'Uploading…' : 'Upload file'}
+                      <input type="file" className="hidden" accept=".pdf,.ppt,.pptx,image/*,video/mp4,video/webm" disabled={!!uploadingLessonId} onChange={e => { const file = e.target.files?.[0]; if (file) uploadModuleFile(file, url => updateLesson(lesson.id, { contentUrl: url, type: file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : /\.pptx?$/i.test(file.name) ? 'pptx' : /\.(mp4|webm)$/i.test(file.name) ? 'video' : 'image' }), lesson.id); e.target.value = ''; }} />
+                    </label>
                     <button onClick={() => addQuiz(lesson.id)} className="px-2.5 py-2 rounded-lg border border-blue-500/20 text-blue-400 text-[10px] font-bold cursor-pointer">+ Module MCQ</button>
                     <button onClick={() => removeLesson(lesson.id)} className="p-2 text-rose-400 hover:bg-rose-500/10 rounded-lg cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
                   </div>
-                  <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-                    <input
-                      value={lesson.contentUrl || ''}
-                      onChange={e => updateLesson(lesson.id, { contentUrl: e.target.value })}
-                      className="glass-input p-2 rounded-lg text-xs text-white flex-1 font-mono"
-                      placeholder="Content URL (YouTube / PDF / PPTX / mp4 / Drive preview…)"
-                    />
-                    <label className={`px-3 py-2 rounded-lg bg-blue-600/15 border border-blue-500/40 text-blue-300 text-[10px] font-bold uppercase cursor-pointer hover:bg-blue-600/25 whitespace-nowrap ${uploadingLessonId === lesson.id ? 'opacity-50 pointer-events-none' : ''}`}>
-                      <input
-                        type="file"
-                        className="hidden"
-                        accept=".pdf,.ppt,.pptx,image/*,video/mp4,video/webm"
-                        disabled={uploadingLessonId === lesson.id}
-                        onChange={e => {
-                          handleModuleFileUpload(lesson.id, e.target.files?.[0]);
-                          e.target.value = '';
-                        }}
-                      />
-                      {uploadingLessonId === lesson.id ? 'Uploading…' : 'Upload file'}
-                    </label>
-                  </div>
-                  {lesson.contentUrl && (
-                    <p className="text-[9px] text-emerald-400/80 font-mono truncate">Attached: {lesson.contentUrl}</p>
-                  )}
                 </div>
               ))}
               <button onClick={() => addQuiz(null, true)} className="px-3 py-2 rounded-lg border border-purple-500/30 text-purple-300 text-xs font-bold cursor-pointer">+ Add Final Course Exam</button>
