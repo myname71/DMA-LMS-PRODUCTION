@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TrendingUp, Users, DollarSign, Star, Award, BarChart2 } from 'lucide-react';
 import { Course, User, Enrollment } from '../types';
+import { formatAmount, formatPrice } from '../lib/currency';
 
 interface InstructorAnalyticsProps {
   currentUser: User;
@@ -29,8 +30,8 @@ export default function InstructorAnalytics({ currentUser, courses, enrollments 
 
   const statCards = [
     { label: 'Total Students', value: totalStudents.toLocaleString(), icon: Users, color: 'text-blue-400', bg: 'bg-blue-500/10 border-blue-500/20' },
-    { label: 'Gross Revenue', value: `$${totalRevenue.toLocaleString()}`, icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
-    { label: 'Your Share (70%)', value: `$${instructorShare.toLocaleString()}`, icon: TrendingUp, color: 'text-teal-400', bg: 'bg-teal-500/10 border-teal-500/20' },
+    { label: 'Gross Revenue', value: formatAmount(totalRevenue), icon: DollarSign, color: 'text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' },
+    { label: 'Your Share (70%)', value: formatAmount(instructorShare), icon: TrendingUp, color: 'text-teal-400', bg: 'bg-teal-500/10 border-teal-500/20' },
     { label: 'Avg Rating', value: `${avgRating} ★`, icon: Star, color: 'text-amber-400', bg: 'bg-amber-500/10 border-amber-500/20' },
     { label: 'Completions', value: completions, icon: Award, color: 'text-purple-400', bg: 'bg-purple-500/10 border-purple-500/20' },
     { label: 'Completion Rate', value: `${completionRate}%`, icon: BarChart2, color: 'text-cyan-400', bg: 'bg-cyan-500/10 border-cyan-500/20' },
@@ -144,9 +145,9 @@ export default function InstructorAnalytics({ currentUser, courses, enrollments 
                     <tr key={course.id} className="hover:bg-white/[0.02] transition-colors">
                       <td className="py-3 pr-4 text-slate-200 font-medium max-w-[200px] truncate">{course.title}</td>
                       <td className="py-3 pr-4 font-mono text-blue-400">{course.enrollmentCount}</td>
-                      <td className="py-3 pr-4 font-mono text-slate-300">${course.price}</td>
-                      <td className="py-3 pr-4 font-mono text-slate-300">${gross.toLocaleString()}</td>
-                      <td className="py-3 font-mono font-bold text-emerald-400">${share.toLocaleString()}</td>
+                      <td className="py-3 pr-4 font-mono text-slate-300">{formatPrice(course.price)}</td>
+                      <td className="py-3 pr-4 font-mono text-slate-300">{formatAmount(gross)}</td>
+                      <td className="py-3 font-mono font-bold text-emerald-400">{formatAmount(share)}</td>
                     </tr>
                   );
                 })}

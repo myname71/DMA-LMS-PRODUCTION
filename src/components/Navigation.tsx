@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { 
-  Menu, X, Shield, User as UserIcon, BookOpen, 
-  Database, LogIn, UserPlus, GraduationCap, ChevronDown, CheckCircle, Grid, Sparkles, MapPin, Mail, MessageSquare, Search,
+  Menu, X, User as UserIcon, BookOpen, 
+  Database, LogIn, UserPlus, GraduationCap, ChevronDown, Grid, Sparkles, MapPin, Mail, MessageSquare, Search,
   Home, BookMarked, CalendarDays, LayoutDashboard, UserCircle2, Megaphone, FileText, Archive, Award, ArrowLeft
 } from 'lucide-react';
 import { SiteNotice, User } from '../types';
-import { DEMO_USERS } from '../data/coursesData';
 
 interface NavigationProps {
   currentPage: string;
@@ -35,7 +34,6 @@ export default function Navigation({
   cmsPages = [],
 }: NavigationProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [showRoleDropdown, setShowRoleDropdown] = useState(false);
   const [megaMenuOpen, setMegaMenuOpen] = useState(false);
 
   // Filter-friendly modules inside our Mega Menu
@@ -113,23 +111,6 @@ export default function Navigation({
     suppressPush.current = true;
     setCurrentPage(prev || 'home');
     window.scrollTo(0, 0);
-  };
-
-  const handleRoleSwitch = (roleKey: string) => {
-    const selectedUser = DEMO_USERS[roleKey];
-    setCurrentUser(selectedUser);
-    setShowRoleDropdown(false);
-    
-    // Auto-navigate securely
-    if (selectedUser.role === 'student') {
-      setCurrentPage('student_dashboard');
-    } else if (selectedUser.role === 'instructor') {
-      setCurrentPage('instructor_dashboard');
-    } else if (selectedUser.role === 'admin' || selectedUser.role === 'super_admin') {
-      setCurrentPage('admin_dashboard');
-    } else {
-      setCurrentPage('home');
-    }
   };
 
   const handleMegaCategoryClick = (category: string) => {
@@ -294,53 +275,6 @@ export default function Navigation({
               <span className="hidden lg:inline">Search</span>
               <kbd className="hidden lg:inline text-[8px] text-slate-600 border border-white/10 rounded px-1 py-0.5 font-mono">⌘K</kbd>
             </button>
-
-            {/* Quick Demo Simulation switcher — admin/super_admin only */}
-            {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (
-            <div className="relative">
-              <button
-                onClick={() => { setMegaMenuOpen(false); setShowRoleDropdown(!showRoleDropdown); }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-white/5 text-slate-350 text-[10px] font-bold font-mono hover:bg-white/10 transition-all cursor-pointer uppercase tracking-wider"
-                id="role-switcher-btn"
-              >
-                <Shield className="w-3.5 h-3.5 text-blue-450" />
-                <span>Simulate Role</span>
-                <ChevronDown className="w-3.5 h-3.5" />
-              </button>
-
-              {showRoleDropdown && (
-                <div className="absolute right-0 mt-2.5 w-60 rounded-xl bg-slate-950 border border-white/5 shadow-2xl p-2 z-50 text-left animate-fade-in">
-                  <div className="text-[9px] uppercase font-bold tracking-widest text-slate-500 px-3 py-1.5 border-b border-white/5 mb-1.5 font-mono">
-                    Simulation Role switcher:
-                  </div>
-                  {(Object.keys(DEMO_USERS) as Array<keyof typeof DEMO_USERS>).map(roleKey => {
-                    const u = DEMO_USERS[roleKey];
-                    const isActive = currentUser?.role === u.role;
-                    return (
-                      <button
-                        key={u.role}
-                        onClick={() => handleRoleSwitch(roleKey as string)}
-                        className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
-                          isActive ? 'bg-blue-600/10 text-white font-bold border border-blue-500/15' : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 font-sans">
-                          <span className="text-sm">
-                            {u.role === 'student' ? '🎓' : u.role === 'instructor' ? '👨‍🏫' : u.role === 'admin' ? '🛡️' : '👑'}
-                          </span>
-                          <div>
-                            <div className="text-xs font-bold leading-tight">{u.name.split(' ')[0]}</div>
-                            <div className="text-[10px] text-slate-500 lowercase leading-tight">{u.role.replace('_', ' ')}</div>
-                          </div>
-                        </div>
-                        {isActive && <CheckCircle className="w-3.5 h-3.5 text-blue-400" />}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            )}
 
             {/* Profile Entry points or Login/Register state */}
             {currentUser ? (
@@ -565,44 +499,6 @@ export default function Navigation({
 
               {/* Divider */}
               <div className="my-2 border-t border-white/10" />
-
-              {/* Role Switcher — admin/super_admin only */}
-              {(currentUser?.role === 'admin' || currentUser?.role === 'super_admin') && (<>
-              <button
-                onClick={() => setShowRoleDropdown(!showRoleDropdown)}
-                className="w-full text-left flex items-center gap-3 py-3 px-3.5 rounded-xl text-sm font-bold uppercase tracking-wider text-[#00ddff] hover:bg-white/5 transition-colors cursor-pointer"
-              >
-                <Shield className="w-4 h-4" />
-                <span>Simulate Role</span>
-                <ChevronDown className={`w-4 h-4 ml-auto transition-transform ${showRoleDropdown ? 'rotate-180' : ''}`} />
-              </button>
-              {showRoleDropdown && (
-                <div className="ml-4 space-y-1">
-                  {(Object.keys(DEMO_USERS) as Array<keyof typeof DEMO_USERS>).map(roleKey => {
-                    const u = DEMO_USERS[roleKey];
-                    const isActive = currentUser?.role === u.role;
-                    return (
-                      <button
-                        key={u.role}
-                        onClick={() => {
-                          handleRoleSwitch(roleKey as string);
-                          setShowRoleDropdown(false);
-                        }}
-                        className={`w-full flex items-center gap-2.5 text-left px-3 py-2.5 rounded-lg text-xs cursor-pointer font-sans ${
-                          isActive ? 'bg-blue-600/10 text-white font-bold border border-blue-500/15' : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                        }`}
-                      >
-                        <span>{u.role === 'student' ? '🎓' : u.role === 'instructor' ? '👨‍🏫' : '🛡️'}</span>
-                        <div>
-                          <div className="font-bold leading-tight">{u.name.split(' ')[0]}</div>
-                          <div className="text-[10px] text-slate-500 capitalize leading-tight">{u.role}</div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              </>)}
 
               {/* Divider */}
               <div className="my-2 border-t border-white/10" />

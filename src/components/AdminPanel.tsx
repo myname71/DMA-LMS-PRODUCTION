@@ -12,6 +12,7 @@ import ThemeEditorTab from './admin/ThemeEditorTab';
 import SiteNoticeTab from './admin/SiteNoticeTab';
 import AdminCourseManager from './admin/AdminCourseManager';
 import InstructorRepository from './InstructorRepository';
+import { formatPrice } from '../lib/currency';
 
 export const isAdminUser = (user: User | null): boolean =>
   user?.role === 'admin' || user?.role === 'super_admin';
@@ -24,15 +25,13 @@ interface AdminPanelProps {
   onApproveInstructor: (instructorId: string) => void;
   onDeleteCourse: (courseId: string) => void;
   onClearLogs: () => void;
-  onApproveCourse?: (courseId: string) => void;
-  onRejectCourse?: (courseId: string, reason: string) => void;
   onRefreshData?: () => void;
   onNoticeChange?: (notice: any | null) => void;
   onCmsChange?: (content: any) => void;
   triggerToast?: (msg: string, type?: 'success' | 'warn') => void;
 }
 
-type TabKey = 'users' | 'approvals' | 'course_approvals' | 'course_manager' | 'repository' | 'moderation' | 'activity_logs' | 'site_cms' | 'bulletin' | 'roles' | 'media' | 'theme';
+type TabKey = 'users' | 'approvals' | 'course_manager' | 'repository' | 'moderation' | 'activity_logs' | 'site_cms' | 'bulletin' | 'roles' | 'media' | 'theme';
 
 export default function AdminPanel({
   currentUser,
@@ -42,15 +41,12 @@ export default function AdminPanel({
   onApproveInstructor,
   onDeleteCourse,
   onClearLogs,
-  onApproveCourse,
-  onRejectCourse,
   onRefreshData = () => {},
   onNoticeChange = () => {},
   onCmsChange = () => {},
   triggerToast = () => {},
 }: AdminPanelProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('users');
-  const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
 
   if (!isAdminUser(currentUser)) {
     return (
@@ -80,7 +76,6 @@ export default function AdminPanel({
     { key: 'roles', label: '🔐 Roles' },
     { key: 'media', label: '🖼️ Media' },
     { key: 'approvals', label: 'Instructors' },
-    { key: 'course_approvals', label: 'Course Approvals' },
     { key: 'course_manager', label: 'Course Manager' },
     { key: 'repository', label: 'Repository' },
     { key: 'moderation', label: 'Moderation' },
@@ -194,62 +189,6 @@ export default function AdminPanel({
           </div>
         )}
 
-        {/* ── Course Approvals ── */}
-        {activeTab === 'course_approvals' && (
-          <div className="space-y-6">
-            <h3 className="text-sm font-bold uppercase text-slate-300">Pending Course Approval Queue</h3>
-            {(() => {
-              // Only courses an instructor actually submitted for review. Drafts
-              // (approvalStatus === 'draft') stay out of the queue until submitted.
-              const pending = courses.filter((c: any) => c.approvalStatus === 'pending');
-              if (pending.length === 0) return (
-                <div className="p-8 text-center rounded-xl glass-card text-slate-500 font-medium italic">
-                  ✓ No courses awaiting review. All submitted courses have been processed.
-                </div>
-              );
-              return (
-                <div className="space-y-4">
-                  {pending.map((course: any) => (
-                    <div key={course.id} className="p-5 rounded-xl glass-card space-y-4">
-                      <div className="flex items-start justify-between gap-4 flex-wrap">
-                        <div>
-                          <span className="text-[9px] font-mono font-bold text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded uppercase border border-amber-500/20 mr-2">{course.category}</span>
-                          <h4 className="text-sm font-extrabold text-white mt-1">{course.title}</h4>
-                          <p className="text-xs text-slate-400 mt-1">By {course.instructorName} • {course.lessons?.length || 0} lessons • ${course.price}</p>
-                          <p className="text-xs text-slate-500 mt-1 line-clamp-2">{course.description}</p>
-                        </div>
-                        <div className="flex gap-2 shrink-0">
-                          <button
-                            onClick={() => onApproveCourse && onApproveCourse(course.id)}
-                            className="px-4 py-2 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold rounded-lg hover:bg-emerald-500/30 flex items-center gap-1.5 cursor-pointer transition-colors"
-                          >
-                            <Check className="w-3.5 h-3.5" /> Approve & Publish
-                          </button>
-                          <button
-                            onClick={() => onRejectCourse && onRejectCourse(course.id, rejectReason[course.id] || 'Content does not meet quality standards.')}
-                            className="px-4 py-2 bg-rose-500/15 border border-rose-500/20 text-rose-400 text-xs font-bold rounded-lg hover:bg-rose-500/25 flex items-center gap-1.5 cursor-pointer transition-colors"
-                          >
-                            <XSquare className="w-3.5 h-3.5" /> Reject
-                          </button>
-                        </div>
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-bold text-slate-500 uppercase mb-1">Rejection Reason (optional)</label>
-                        <input
-                          value={rejectReason[course.id] || ''}
-                          onChange={e => setRejectReason(prev => ({ ...prev, [course.id]: e.target.value }))}
-                          placeholder="e.g. Missing learning objectives, incomplete lessons..."
-                          className="w-full text-xs p-2.5 rounded-lg glass-input text-white"
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
-        )}
-
         {/* ── Course Manager ── */}
         {activeTab === 'course_manager' && (
           <AdminCourseManager
@@ -283,7 +222,7 @@ export default function AdminPanel({
                       {course.category}
                     </span>
                     <h4 className="text-xs font-bold leading-snug text-slate-200 mt-1">{course.title}</h4>
-                    <p className="text-[10px] text-slate-500">Instructor: {course.instructorName} • ${course.price}</p>
+                    <p className="text-[10px] text-slate-500">Instructor: {course.instructorName} • {formatPrice(course.price)}</p>
                   </div>
                   <button
                     onClick={() => onDeleteCourse(course.id)}

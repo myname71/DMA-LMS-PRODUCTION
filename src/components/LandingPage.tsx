@@ -25,6 +25,7 @@ import chowdhuryAkram from '../assets/images/team/chowdhury-akram.webp';
 import mahmudulHasan from '../assets/images/team/mahmudul-hasan.webp';
 import saniatZishan from '../assets/images/team/saniat-zishan.webp';
 import { Course, SubscriptionPlan } from '../types';
+import { formatAmount, formatPrice } from '../lib/currency';
 import { SUBSCRIPTION_PLANS, GENERAL_FAQS } from '../data/coursesData';
 import ProjectJourney from './ProjectJourney';
 import PlexusCanvas from './PlexusCanvas';
@@ -58,6 +59,9 @@ export default function LandingPage({
 }: LandingPageProps) {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [activePlan, setActivePlan] = useState<'basic' | 'pro' | 'enterprise'>('pro');
+
+  // Flagship card is data-driven: the first published course from the catalogue.
+  const featured = courses[0] ?? null;
 
   /* ── "Continue where you left off" resume banner ── */
   const [resumeData, setResumeData] = useState<{ courseId: string; courseTitle: string; courseLevel: string } | null>(null);
@@ -296,22 +300,21 @@ export default function LandingPage({
                   ACADEMY FLAGSHIP
                 </span>
                 <span className="flex items-center gap-1 text-[11px] text-amber-400 font-bold font-mono">
-                  ★ 4.9 <span className="text-slate-400">(150)</span>
+                  <ShieldCheck className="w-3.5 h-3.5" /> Certificate on pass
                 </span>
               </div>
 
               {/* Course Title & Cover Media with Live Simulator Overlay */}
               <div 
                 onClick={() => {
-                  const course101 = courses.find(c => c.id === 'c_101');
-                  if (course101) onSelectCourse(course101);
+                  if (featured) onSelectCourse(featured);
                 }}
                 className="relative rounded-2xl overflow-hidden aspect-video border border-white/10 shadow-inner group-hover:border-blue-550 transition-colors cursor-pointer group/cover"
               >
                 {/* Cover Image */}
                 <img 
-                  src={cmsHero?.imageUrl || "/course-cover.webp"} 
-                  alt="Digital Manufacturing Academy Course 101" 
+                  src={featured?.image || cmsHero?.imageUrl || "/course-cover.webp"} 
+                  alt={featured?.title || "Digital Manufacturing Academy"} 
                   width={1280}
                   height={720}
                   fetchPriority="high"
@@ -327,7 +330,7 @@ export default function LandingPage({
                       TNE CERTIFIED
                     </span>
                     <span className="px-1.5 py-0.5 rounded bg-black/60 text-slate-300 text-[8px] font-semibold">
-                      36 Hours
+                      {featured?.duration || 'Self paced'}
                     </span>
                   </div>
                   
@@ -346,13 +349,13 @@ export default function LandingPage({
               {/* Course details information */}
               <div className="text-left space-y-2.5">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-blue-400 font-mono">
-                  Smart Factory • Advanced Certification
+                  {featured?.category || 'Smart Factory'} • {(featured?.level as string) || 'Advanced'} Certification
                 </span>
                 <h3 className="text-lg font-extrabold text-white leading-snug">
-                  Digital Manufacturing Academy Course 101
+                  {featured?.title || 'Digital Manufacturing Academy'}
                 </h3>
                 <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed font-sans">
-                  An expert-designed British Council co-certified curriculum covering the complete Industrial Evolution from Industry 4.0 to Industry 5.0/6.0, Digital Twins (ISO 23247), additive workflows, Cobots, and cybersecurity protocols.
+                  {featured?.description || 'An expert-designed, British Council co-certified curriculum covering Industry 4.0 through Industry 5.0: Digital Twins, additive workflows, cobots and industrial cybersecurity.'}
                 </p>
               </div>
 
@@ -360,15 +363,15 @@ export default function LandingPage({
               <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/5 text-center text-[10px] font-mono text-slate-300">
                 <div className="flex flex-col">
                   <span className="text-blue-400 font-bold uppercase text-[9px]">Instructor</span>
-                  <span className="text-slate-200 truncate mt-0.5 font-sans font-medium">Prof Javaid Butt</span>
+                  <span className="text-slate-200 truncate mt-0.5 font-sans font-medium">{featured?.instructorName || 'DMA Faculty'}</span>
                 </div>
                 <div className="flex flex-col border-x border-white/5">
                   <span className="text-blue-400 font-bold uppercase text-[9px]">Syllabus</span>
-                  <span className="text-slate-200 mt-0.5 font-sans font-medium">6 Modules</span>
+                  <span className="text-slate-200 mt-0.5 font-sans font-medium">{featured?.lessons?.length || 0} Modules</span>
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-blue-400 font-bold uppercase text-[9px]">Rating</span>
-                  <span className="text-slate-200 mt-0.5 font-sans font-medium font-mono">4.9 ★</span>
+                  <span className="text-blue-400 font-bold uppercase text-[9]">Fee</span>
+                  <span className="text-slate-200 mt-0.5 font-sans font-medium font-mono">{formatPrice(featured?.price ?? 0)}</span>
                 </div>
               </div>
 
@@ -376,12 +379,8 @@ export default function LandingPage({
               <div className="flex items-center gap-3 pt-1">
                 <button 
                   onClick={() => {
-                    const course101 = courses.find(c => c.id === 'c_101');
-                    if (course101) {
-                      onSelectCourse(course101);
-                    } else {
-                      onExploreCourses();
-                    }
+                    if (featured) onSelectCourse(featured);
+                    else onExploreCourses();
                   }}
                   className="flex-1 text-center py-2.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-bold tracking-wide text-slate-100 transition-all cursor-pointer"
                 >
@@ -389,13 +388,14 @@ export default function LandingPage({
                 </button>
                 <button 
                   onClick={() => {
-                    const course101 = courses.find(c => c.id === 'c_101');
-                    if (course101 && onLaunchPlayer) { onLaunchPlayer(course101); }
-                    else { onEnroll('c_101'); }
+                    if (!featured) { onExploreCourses(); return; }
+                    if (featured.price > 0) { onSelectCourse(featured); return; }
+                    if (onLaunchPlayer && featured.lessons?.length) { onLaunchPlayer(featured); }
+                    else { onEnroll(featured.id); }
                   }}
                   className="flex-1 text-center py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] text-xs font-extrabold text-white transition-all cursor-pointer"
                 >
-                  Enroll Free
+                  {!featured ? 'Browse courses' : featured.price > 0 ? `Enroll — ${formatAmount(featured.price)}` : 'Enroll Free'}
                 </button>
               </div>
             </div>

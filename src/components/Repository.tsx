@@ -1,15 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive, Download, File, FileText, Image, Loader2, Lock,
-  Presentation, Search, Sheet, Tag,
+  Presentation, Search, Sheet, Tag, Upload,
 } from 'lucide-react';
-import { User } from '../types';
+import { Course, User } from '../types';
 import {
-  StudyMaterial, downloadMaterial, fetchMaterials, fileKind, formatBytes,
+  MATERIAL_KINDS, MaterialKind, StudyMaterial, createMaterial, downloadMaterial,
+  fetchMaterials, fileKind, formatBytes, readFileAsDataUrl, validateMaterialFile,
 } from '../lib/studyMaterials';
 
 interface RepositoryProps {
   currentUser: User | null;
+  /** Course list used by the staff upload form to attach a file to a course. */
+  courses?: Course[];
   /** Called when a signed-out visitor presses Download (route to register). */
   onRequireAuth?: () => void;
   triggerToast?: (msg: string, type?: 'success' | 'warn') => void;
@@ -30,10 +33,20 @@ const KIND_ICON = {
 
 export default function Repository({
   currentUser,
+  courses = [],
   onRequireAuth,
   triggerToast = () => {},
   embedded = false,
 }: RepositoryProps) {
+  const canUpload = !!currentUser && ['instructor', 'admin', 'super_admin'].includes(currentUser.role);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadTitle, setUploadTitle] = useState('');
+  const [uploadKind, setUploadKind] = useState<MaterialKind>('material');
+  const [uploadCourse, setUploadCourse] = useState('');
+  const [uploadTags, setUploadTags] = useState('');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadError, setUploadError] = useState('');
+  const [uploading, setUploading] = useState(false);
   const [materials, setMaterials] = useState<StudyMaterial[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -77,6 +90,36 @@ export default function Repository({
     });
   }, [materials, query, activeTag]);
 
+  const handleUpload = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadTitle.trim()) { triggerToast('Give the file a title.', 'warn'); return; }
+    if (!uploadFile) { triggerToast(uploadError || 'Choose a file to upload.', 'warn'); return; }
+    const problem = validateMaterialFile(uploadFile);
+    if (problem) { setUploadError(problem); triggerToast(problem, 'warn'); return; }
+    setUploading(true);
+    try {
+      const fileData = await readFileAsDataUrl(uploadFile);
+      await createMaterial({
+        title: uploadTitle.trim(),
+        kind: uploadKind,
+        courseId: uploadCourse || null,
+        tags: uploadTags,
+        fileName: uploadFile.name,
+        fileData,
+      });
+      triggerToast('Published to the repository.');
+      setUploadTitle(''); setUploadTags(''); setUploadCourse(''); setUploadFile(null);
+      setUploadKind('material'); setUploadError(''); setUploadOpen(false);
+      const input = document.getElementById('repo-file-input') as HTMLInputElement | null;
+      if (input) input.value = '';
+      await load();
+    } catch (err: any) {
+      triggerToast(err?.message || 'Upload failed.', 'warn');
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const handleDownload = async (material: StudyMaterial) => {
     if (!currentUser) {
       triggerToast('Sign in or register to download study materials.', 'warn');
@@ -104,6 +147,94 @@ export default function Repository({
 
   const body = (
     <div className="space-y-6 text-left">
+      {/* Staff upload — instructors and admins publish straight to the repository */}
+      {canUpload && (
+        <div className="rounded-2xl border border-white/10 bg-slate-900/40 p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-sm font-extrabold text-white">Upload to the repository</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Study material, syllabus, exam question papers and answer keys.</p>
+            </div>
+            <button
+              onClick={() => setUploadOpen(o => !o)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold cursor-pointer"
+            >
+              <Upload className="w-3.5 h-3.5" /> {uploadOpen ? 'Close' : 'Upload a file'}
+            </button>
+          </div>
+
+          {uploadOpen && (
+            <form onSubmit={handleUpload} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Title *</label>
+                  <input
+                    value={uploadTitle}
+                    onChange={e => setUploadTitle(e.target.value)}
+                    placeholder="e.g. PLC Lab Manual — Week 3"
+                    className="w-full text-xs p-3 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder:text-slate-600"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Document type</label>
+                  <select
+                    value={uploadKind}
+                    onChange={e => setUploadKind(e.target.value as MaterialKind)}
+                    className="w-full text-xs p-3 rounded-lg bg-slate-900 border border-slate-800 text-white cursor-pointer"
+                  >
+                    {MATERIAL_KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Course link</label>
+                  <select
+                    value={uploadCourse}
+                    onChange={e => setUploadCourse(e.target.value)}
+                    className="w-full text-xs p-3 rounded-lg bg-slate-900 border border-slate-800 text-white cursor-pointer"
+                  >
+                    <option value="">Not tied to a course</option>
+                    {courses.map(c => <option key={c.id} value={c.id}>{c.title}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Tags (comma separated)</label>
+                  <input
+                    value={uploadTags}
+                    onChange={e => setUploadTags(e.target.value)}
+                    placeholder="plc, week-3, lab"
+                    className="w-full text-xs p-3 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">File *</label>
+                <input
+                  id="repo-file-input"
+                  type="file"
+                  onChange={e => {
+                    const picked = e.target.files?.[0] || null;
+                    if (!picked) { setUploadFile(null); return; }
+                    const problem = validateMaterialFile(picked);
+                    setUploadError(problem || '');
+                    setUploadFile(problem ? null : picked);
+                  }}
+                  className="w-full text-xs text-slate-400 file:mr-3 file:px-3 file:py-2 file:rounded-lg file:border-0 file:bg-blue-600 file:text-white file:text-xs file:font-bold file:cursor-pointer"
+                />
+                {uploadError && <p className="text-[10px] text-rose-400 mt-1">{uploadError}</p>}
+                <p className="text-[10px] text-slate-600 mt-1">PDF, Office files, TXT, CSV, ZIP or images — up to 25MB.</p>
+              </div>
+              <button
+                type="submit"
+                disabled={uploading}
+                className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+              >
+                {uploading ? 'Uploading…' : 'Publish file'}
+              </button>
+            </form>
+          )}
+        </div>
+      )}
+
       {/* Search + tag filter */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-4">
         <div className="relative flex-1">

@@ -36,7 +36,7 @@ import ContactUsPage from './components/pages/ContactUsPage';
 import AboutUsPage from './components/pages/AboutUsPage';
 import TermsPage from './components/pages/TermsPage';
 import PricingPage from './components/pages/PricingPage';
-import { DEMO_USERS, GENERAL_FAQS } from './data/coursesData';
+import { GENERAL_FAQS } from './data/coursesData';
 
 export default function App() {
   // Global States loaded asynchronously from Express Server API
@@ -430,30 +430,6 @@ export default function App() {
   };
 
   // Admin deletes course
-  const handleApproveCourse = async (courseId: string) => {
-    try {
-      await fetch('/api/admin/approve-course', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ courseId }),
-      });
-      fetchDbState();
-      triggerToast('Course approved and published!', 'success');
-    } catch { triggerToast('Failed to approve course', 'warn'); }
-  };
-
-  const handleRejectCourse = async (courseId: string, reason: string) => {
-    try {
-      await fetch('/api/admin/reject-course', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ courseId, reason }),
-      });
-      fetchDbState();
-      triggerToast('Course rejected.', 'warn');
-    } catch { triggerToast('Failed to reject course', 'warn'); }
-  };
-
   const handleDeleteCourse = async (courseId: string) => {
     try {
       const resp = await fetch(`/api/admin/courses/${courseId}`, {
@@ -705,6 +681,7 @@ export default function App() {
         return (
           <Repository
             currentUser={currentUser}
+            courses={courses}
             onRequireAuth={() => { setCurrentPage('register'); window.scrollTo(0, 0); }}
             triggerToast={triggerToast}
           />
@@ -846,8 +823,6 @@ export default function App() {
             onApproveInstructor={handleApproveInstructor}
             onDeleteCourse={handleDeleteCourse}
             onClearLogs={handleClearLogs}
-            onApproveCourse={handleApproveCourse}
-            onRejectCourse={handleRejectCourse}
             onRefreshData={fetchDbState}
             onNoticeChange={setSiteNotice}
             onCmsChange={setCmsContent}

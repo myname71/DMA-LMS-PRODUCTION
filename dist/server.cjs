@@ -450,7 +450,7 @@ var requireAdmin = requireRoles(
   "super_admin"
 );
 var requireSuperAdmin = requireRoles("super_admin");
-function requireApprovedInstructor(stateSource) {
+function requireStaff(stateSource) {
   return (req, res, next) => {
     const s = req.session ?? getSession(req);
     if (!s) {
@@ -458,37 +458,18 @@ function requireApprovedInstructor(stateSource) {
       return;
     }
     req.session = s;
+    if (s.role !== "instructor" && s.role !== "admin" && s.role !== "super_admin") {
+      res.status(403).json({ error: "Only instructors and admins can perform this action" });
+      return;
+    }
     const { users } = resolveState(stateSource);
     const user = users.find((u) => u.id === s.userId);
-    if (s.role === "admin" || s.role === "super_admin") {
-      if (user) {
-        if (user.suspended) {
-          res.status(403).json({ error: "Account is suspended" });
-          return;
-        }
-        req.user = user;
-      }
-      next();
-      return;
-    }
-    if (s.role !== "instructor") {
-      res.status(403).json({
-        error: "Only instructors (or admins) can perform this action"
-      });
-      return;
-    }
     if (!user) {
       res.status(401).json({ error: "User not found" });
       return;
     }
     if (user.suspended) {
       res.status(403).json({ error: "Account is suspended" });
-      return;
-    }
-    if (user.isApproved === false) {
-      res.status(403).json({
-        error: "Instructor account is pending approval. You cannot create or publish courses until an admin approves your account."
-      });
       return;
     }
     req.user = user;
@@ -887,10 +868,6 @@ app.post("/api/auth/login", async (req, res) => {
       res.status(403).json({ error: "Account suspended. Contact your administrator." });
       return;
     }
-    if (!user.isApproved) {
-      res.status(403).json({ error: "Account pending approval. Contact your administrator." });
-      return;
-    }
     if (!user.password) {
       res.status(403).json({
         error: "No password is set for this account. Use the 'Forgot password' link to set one.",
@@ -1121,7 +1098,7 @@ app.get("/api/courses/:id", (req, res) => {
 });
 app.post(
   "/api/courses/create",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   async (req, res) => {
     const session = req.session;
     const user = req.user || state.users.find((u) => u.id === session.userId);
@@ -1155,10 +1132,11 @@ app.post(
       price: isFree ? 0 : price || 0,
       isFree: !!isFree,
       image: image || "",
-      // Admin / super_admin courses go live immediately — no publishing approval.
-      // Instructor courses stay drafts until submitted for review and approved.
-      isPublished: isManager,
-      approvalStatus: isManager ? "approved" : "draft",
+      // Every staff-created course is live immediately. There is no admin
+      // approval step: an instructor publishing to the catalogue is enough.
+      // They can still unpublish from the course editor.
+      isPublished: b.isPublished !== false,
+      approvalStatus: "approved",
       enrollmentCount: 0,
       lessons: Array.isArray(lessons) ? lessons : [],
       quizzes: Array.isArray(quizzes) ? quizzes : [],
@@ -1200,7 +1178,7 @@ var COURSE_MEDIA_MIME = {
 };
 app.post(
   "/api/courses/media",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   (req, res) => {
     const session = req.session;
     const b = req.body || {};
@@ -1281,37 +1259,9 @@ app.post("/api/courses/update", (req, res) => {
     res.status(403).json({ error: "Unauthorized" });
     return;
   }
-  if (isOwner && session.role === "instructor" && actor?.isApproved === false) {
-    res.status(403).json({ error: "Instructor account is pending approval" });
-    return;
-  }
   state.courses[idx] = { ...course, ...updates };
   saveState();
   res.json({ status: "success", course: state.courses[idx] });
-});
-app.post("/api/courses/submit-for-review", (req, res) => {
-  const session = requireSession(req, res);
-  if (!session) return;
-  const actor = state.users.find((u) => u.id === session.userId);
-  if (actor?.suspended) {
-    res.status(403).json({ error: "Account is suspended" });
-    return;
-  }
-  if (session.role === "instructor" && actor?.isApproved === false) {
-    res.status(403).json({ error: "Instructor account is pending approval" });
-    return;
-  }
-  const { courseId } = req.body;
-  const course = state.courses.find((c) => c.id === courseId && c.instructorId === session.userId);
-  if (!course) {
-    res.status(404).json({ error: "Course not found or not owned by you" });
-    return;
-  }
-  course.approvalStatus = "pending";
-  course.isPublished = false;
-  addLog(`Course "${course.title}" submitted for review`, "course_review", session.userId);
-  saveState();
-  res.json({ status: "success" });
 });
 app.post("/api/courses/:id/enroll", (req, res) => {
   const session = requireSession(req, res);
@@ -2199,22 +2149,26 @@ function base64Bytes(base64) {
   const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
   return Math.max(0, Math.floor(clean.length * 3 / 4) - padding);
 }
-app.get("/api/study-materials", (_req, res) => {
-  const materials = (state.studyMaterials || []).slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))).map(materialSummary);
+app.get("/api/study-materials", (req, res) => {
+  const session = getSession(req);
+  const isStaff = !!session && ["instructor", "admin", "super_admin"].includes(session.role);
+  const materials = (state.studyMaterials || []).filter((m) => isStaff || m.kind !== "answer-key").slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))).map(materialSummary);
   res.json({ materials });
 });
 app.get(
   "/api/study-materials/all",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   (req, res) => {
     const session = req.session;
-    const materials = (state.studyMaterials || []).filter((m) => m.uploaderId === session.userId).slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))).map(materialSummary);
+    const isManager = session.role === "admin" || session.role === "super_admin";
+    const materials = (state.studyMaterials || []).filter((m) => isManager || m.uploaderId === session.userId).slice().sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || ""))).map(materialSummary);
     res.json({ materials });
   }
 );
+var MATERIAL_KINDS = ["material", "question-paper", "answer-key", "syllabus"];
 app.post(
   "/api/study-materials",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   (req, res) => {
     const session = req.session;
     const user = req.user;
@@ -2247,11 +2201,14 @@ app.post(
     }
     const mimeType = declaredType && declaredType !== "application/octet-stream" ? declaredType : STUDY_MATERIAL_MIME[ext] || "application/octet-stream";
     const tags = (Array.isArray(b.tags) ? b.tags : String(b.tags || "").split(",")).map((t) => String(t).trim().toLowerCase()).filter(Boolean).slice(0, 12);
+    const requestedKind = String(b.kind || "material").trim().toLowerCase();
+    const kind = MATERIAL_KINDS.includes(requestedKind) ? requestedKind : "material";
     const material = {
       id: `mat_${Date.now()}`,
       title,
       description: String(b.description || "").trim().slice(0, 1e3),
       courseId: String(b.courseId || "").trim() || null,
+      kind,
       tags,
       fileName,
       fileType: ext,
@@ -2273,7 +2230,7 @@ app.post(
 );
 app.delete(
   "/api/study-materials/:id",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   (req, res) => {
     const session = req.session;
     const idx = (state.studyMaterials || []).findIndex((m) => m.id === req.params.id);
@@ -2300,6 +2257,10 @@ app.post("/api/study-materials/:id/download", (req, res) => {
   const material = (state.studyMaterials || []).find((m) => m.id === req.params.id);
   if (!material) {
     res.status(404).json({ error: "Material not found" });
+    return;
+  }
+  if (material.kind === "answer-key" && !["instructor", "admin", "super_admin"].includes(session.role)) {
+    res.status(403).json({ error: "Answer keys are restricted to teaching staff" });
     return;
   }
   const enrolled = !material.courseId || state.enrollments.some(
@@ -2857,6 +2818,15 @@ app.post("/api/exams/:id/attempt", (req, res) => {
     timeTaken: timeTaken || 0,
     attemptedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
+  if (passed && exam.courseId) {
+    const certificate = issueCertificate({
+      userId: session.userId,
+      courseId: exam.courseId,
+      grade: score,
+      source: `exam:${exam.id}`
+    });
+    if (certificate) attempt.certificateId = certificate.id;
+  }
   state.examAttempts.push(attempt);
   addLog(`Exam attempt: ${exam.title} \u2014 ${score}% (${passed ? "PASS" : "FAIL"})`, "exam", session.userId);
   saveState();
@@ -2877,6 +2847,38 @@ app.get("/api/exams/all-results", (req, res) => {
   if (!session) return;
   res.json({ results: state.examAttempts });
 });
+function issueCertificate(opts) {
+  const { userId, courseId, grade = null, source = "exam" } = opts;
+  if (!courseId) return null;
+  const course = state.courses.find((c) => c.id === courseId);
+  if (!course) return null;
+  const existing = state.certificates.find((c) => c.userId === userId && c.courseId === courseId);
+  if (existing) return existing;
+  const user = state.users.find((u) => u.id === userId);
+  const template = state.certTemplates.find((t) => t.isDefault) || state.certTemplates[0] || null;
+  const certId = `cert_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const cert = {
+    id: certId,
+    userId,
+    userName: user?.name || "Student",
+    courseId,
+    courseTitle: course.title,
+    templateId: template?.id || "tmpl_default",
+    templateName: template?.name || "Standard",
+    credentialUrl: `/certificates/verify/${certId}`,
+    issuedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    grade,
+    source
+  };
+  state.certificates.push(cert);
+  const enrollment = state.enrollments.find((e) => e.userId === userId && e.courseId === courseId);
+  if (enrollment) {
+    enrollment.certificateId = certId;
+    enrollment.completedAt = enrollment.completedAt || (/* @__PURE__ */ new Date()).toISOString();
+  }
+  addLog(`Certificate issued: ${course.title} \u2192 ${user?.name || userId}`, "certificate", userId);
+  return cert;
+}
 app.get("/api/certificates/user/:userId", (req, res) => {
   const session = requireSession(req, res);
   if (!session) return;

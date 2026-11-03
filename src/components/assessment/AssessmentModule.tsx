@@ -60,6 +60,14 @@ export default function AssessmentModule({ currentUser, courses, enrollments, em
   const [examCurrentQ, setExamCurrentQ] = useState(0);
   const [examTimer, setExamTimer] = useState(0);
   const [examTimerActive, setExamTimerActive] = useState(false);
+  // Instructor exam builder — question paper + answer key
+  const [examBuilderOpen, setExamBuilderOpen] = useState(false);
+  const [newExam, setNewExam] = useState({ title: '', courseId: '', passingScore: 70, durationMinutes: 60 });
+  const [newExamQuestions, setNewExamQuestions] = useState<any[]>([
+    { question: '', options: ['', '', '', ''], correctAnswer: 0 },
+  ]);
+  const [savingExam, setSavingExam] = useState(false);
+  const [examError, setExamError] = useState('');
   const [lastExamAttempt, setLastExamAttempt] = useState<any>(null);
   const [examLoading, setExamLoading] = useState(false);
   const examTimerRef = useRef<any>(null);
@@ -205,6 +213,53 @@ export default function AssessmentModule({ currentUser, courses, enrollments, em
         return t - 1;
       });
     }, 1000);
+  }
+
+  async function createExam() {
+    setExamError('');
+    if (!newExam.title.trim()) { setExamError('Give the exam a title.'); return; }
+    if (!newExam.courseId) { setExamError('Link the exam to a course so a pass issues a certificate.'); return; }
+    const questions = newExamQuestions
+      .map(q => ({
+        question: String(q.question || '').trim(),
+        options: (q.options as string[]).map(o => String(o || '').trim()).filter(Boolean),
+        correctAnswer: Number(q.correctAnswer) || 0,
+      }))
+      .filter(q => q.question && q.options.length >= 2)
+      .map((q, index) => ({
+        id: `q_${index}_${Date.now()}`,
+        question: q.question,
+        options: q.options,
+        correctAnswer: Math.min(q.correctAnswer, q.options.length - 1),
+      }));
+    if (questions.length === 0) {
+      setExamError('Add at least one question with two or more options.');
+      return;
+    }
+    setSavingExam(true);
+    try {
+      const r = await API('/api/exams/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          title: newExam.title.trim(),
+          courseId: newExam.courseId,
+          passingScore: Number(newExam.passingScore) || 70,
+          durationMinutes: Number(newExam.durationMinutes) || 60,
+          isPublished: true,
+          questions,
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not create the exam');
+      setExamBuilderOpen(false);
+      setNewExam({ title: '', courseId: '', passingScore: 70, durationMinutes: 60 });
+      setNewExamQuestions([{ question: '', options: ['', '', '', ''], correctAnswer: 0 }]);
+      await loadExams();
+    } catch (err: any) {
+      setExamError(err?.message || 'Could not create the exam');
+    } finally {
+      setSavingExam(false);
+    }
   }
 
   async function submitExam(exam: any, answers: number[]) {
@@ -616,6 +671,124 @@ export default function AssessmentModule({ currentUser, courses, enrollments, em
             ))}
           </div>
 
+          {/* Instructor exam builder — question paper + answer key */}
+          {isInstructor && (
+            <div className="mb-6">
+              <button
+                onClick={() => setExamBuilderOpen(o => !o)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
+              >
+                <FileText className="w-3.5 h-3.5" /> {examBuilderOpen ? 'Close exam builder' : 'Create an exam'}
+              </button>
+
+              {examBuilderOpen && (
+                <div className="mt-4 p-5 rounded-2xl border border-slate-800 bg-[#111827] space-y-4">
+                  <p className="text-[10px] text-slate-400">
+                    Enter the question paper and mark the correct option for each question — the system grades the
+                    attempt and issues the course certificate automatically on a pass.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <input
+                      value={newExam.title}
+                      onChange={e => setNewExam(p => ({ ...p, title: e.target.value }))}
+                      placeholder="Exam title, e.g. Digital Twin — Final Exam"
+                      className="text-xs p-3 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder:text-slate-600"
+                    />
+                    <select
+                      value={newExam.courseId}
+                      onChange={e => setNewExam(p => ({ ...p, courseId: e.target.value }))}
+                      className="text-xs p-3 rounded-lg bg-slate-900 border border-slate-800 text-white cursor-pointer"
+                    >
+                      <option value="">Select the course…</option>
+                      {courses.map((c: any) => <option key={c.id} value={c.id}>{c.title}</option>)}
+                    </select>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-2">
+                      Pass mark %
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={newExam.passingScore}
+                        onChange={e => setNewExam(p => ({ ...p, passingScore: Number(e.target.value) }))}
+                        className="w-20 text-xs p-2 rounded-lg bg-slate-900 border border-slate-800 text-white"
+                      />
+                    </label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase flex items-center gap-2">
+                      Duration (min)
+                      <input
+                        type="number"
+                        min={5}
+                        value={newExam.durationMinutes}
+                        onChange={e => setNewExam(p => ({ ...p, durationMinutes: Number(e.target.value) }))}
+                        className="w-20 text-xs p-2 rounded-lg bg-slate-900 border border-slate-800 text-white"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="space-y-3">
+                    {newExamQuestions.map((q, qi) => (
+                      <div key={qi} className="p-4 rounded-xl border border-slate-800 bg-slate-900/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase">Question {qi + 1}</span>
+                          {newExamQuestions.length > 1 && (
+                            <button
+                              onClick={() => setNewExamQuestions(prev => prev.filter((_, i) => i !== qi))}
+                              className="text-[10px] font-bold text-rose-400 hover:underline cursor-pointer"
+                            >Remove</button>
+                          )}
+                        </div>
+                        <input
+                          value={q.question}
+                          onChange={e => setNewExamQuestions(prev => prev.map((row, i) => i === qi ? { ...row, question: e.target.value } : row))}
+                          placeholder="Question text"
+                          className="w-full text-xs p-2.5 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder:text-slate-600"
+                        />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {q.options.map((opt: string, oi: number) => (
+                            <label key={oi} className="flex items-center gap-2 text-[10px] text-slate-400">
+                              <input
+                                type="radio"
+                                name={`correct-${qi}`}
+                                checked={Number(q.correctAnswer) === oi}
+                                onChange={() => setNewExamQuestions(prev => prev.map((row, i) => i === qi ? { ...row, correctAnswer: oi } : row))}
+                                className="accent-emerald-500 cursor-pointer"
+                                title="Mark as the correct answer"
+                              />
+                              <span className="font-bold text-slate-500">{String.fromCharCode(65 + oi)}.</span>
+                              <input
+                                value={opt}
+                                onChange={e => setNewExamQuestions(prev => prev.map((row, i) => i === qi
+                                  ? { ...row, options: row.options.map((o: string, k: number) => k === oi ? e.target.value : o) }
+                                  : row))}
+                                placeholder={`Option ${String.fromCharCode(65 + oi)}`}
+                                className="flex-1 text-xs p-2 rounded-lg bg-slate-900 border border-slate-800 text-white placeholder:text-slate-600"
+                              />
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setNewExamQuestions(prev => [...prev, { question: '', options: ['', '', '', ''], correctAnswer: 0 }])}
+                        className="text-[10px] font-bold text-blue-400 hover:underline cursor-pointer"
+                      >+ Add another question</button>
+                    </div>
+                  </div>
+
+                  {examError && <p className="text-[10px] text-rose-400">{examError}</p>}
+                  <button
+                    onClick={createExam}
+                    disabled={savingExam}
+                    className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold cursor-pointer"
+                  >
+                    {savingExam ? 'Publishing…' : 'Publish exam & answer key'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Exam Schedule */}
           {examView === 'schedule' && (
             <div className="space-y-4">
@@ -785,6 +958,11 @@ function ResultCard({ attempt, onRetry, label = 'Quiz' }: { attempt: any; onRetr
             </div>
           ))}
         </div>
+      )}
+      {attempt.certificateId && (
+        <p className="mb-3 text-[11px] text-teal-300 font-bold flex items-center gap-1.5">
+          <Award className="w-4 h-4" /> Certificate issued — download it from the Certification page.
+        </p>
       )}
       <button onClick={onRetry} className="flex items-center gap-1.5 text-xs text-blue-400 hover:underline cursor-pointer">
         <RotateCcw className="w-3 h-3" /> Retake {label}

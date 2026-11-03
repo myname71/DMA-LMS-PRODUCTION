@@ -1,11 +1,22 @@
 import { getAuthHeaders } from './session';
 
+/** What a repository document is for. Answer keys are staff-only on download. */
+export type MaterialKind = 'material' | 'question-paper' | 'answer-key' | 'syllabus';
+
+export const MATERIAL_KINDS: { value: MaterialKind; label: string }[] = [
+  { value: 'material', label: 'Study material' },
+  { value: 'syllabus', label: 'Syllabus' },
+  { value: 'question-paper', label: 'Exam question paper' },
+  { value: 'answer-key', label: 'Exam answer key' },
+];
+
 /** Metadata returned by the API (the base64 payload is only sent on download). */
 export interface StudyMaterial {
   id: string;
   title: string;
   description?: string;
   courseId?: string | null;
+  kind?: MaterialKind;
   tags?: string[];
   fileName: string;
   fileType: string;
@@ -75,6 +86,26 @@ export async function fetchMaterials(): Promise<StudyMaterial[]> {
   if (!resp.ok) throw new Error('Could not load repository materials');
   const data = await resp.json();
   return (data.materials || []) as StudyMaterial[];
+}
+
+export async function createMaterial(payload: {
+  title: string;
+  description?: string;
+  courseId?: string | null;
+  kind?: MaterialKind;
+  tags?: string;
+  fileName: string;
+  fileData: string;
+}): Promise<StudyMaterial> {
+  const resp = await fetch('/api/study-materials', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+    body: JSON.stringify(payload),
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(data.error || 'Upload failed');
+  return data.material as StudyMaterial;
 }
 
 export async function fetchMyMaterials(): Promise<StudyMaterial[]> {

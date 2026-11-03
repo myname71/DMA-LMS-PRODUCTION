@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { Course, User, Lesson, Quiz, LearningPath, Enrollment } from '../types';
 import { getAuthHeaders } from '../lib/session';
+import { formatAmount } from '../lib/currency';
 import GoogleDriveIntegration from './GoogleDriveIntegration';
 import LearningPathsView from './LearningPathsView';
 import InstructorCMS from './InstructorCMS';
@@ -320,12 +321,7 @@ export default function InstructorDashboard({
     // The failure reason was already surfaced as a toast by App.tsx.
     if (!created) return;
 
-    const isManager = currentUser.role === "admin" || currentUser.role === "super_admin";
-    if (isManager) {
-      alert("Course created and published — it is live for all students right away.");
-    } else {
-      alert("Course created! It is saved as a draft — use ‘Submit for review’ in My Courses to publish it after admin approval.");
-    }
+    alert("Course published — it is live in the catalogue and on the home page right away.");
     resetWizard();
   };
 
@@ -353,24 +349,27 @@ export default function InstructorDashboard({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  // Submit a draft course for admin approval (Submit for review button).
-  const submitForReview = async (course: Course) => {
+  // Publish / unpublish one of my courses. No admin approval step.
+  const setCoursePublished = async (course: Course, published: boolean) => {
     try {
-      const resp = await fetch('/api/courses/submit-for-review', {
+      const resp = await fetch('/api/courses/update', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ courseId: course.id }),
+        body: JSON.stringify({
+          courseId: course.id,
+          updates: { isPublished: published, approvalStatus: published ? 'approved' : 'draft' },
+        }),
       });
       const data = await resp.json();
       if (!resp.ok || data.status !== 'success') {
-        triggerToast(data.error || 'Could not submit the course for review.', 'warn');
+        triggerToast(data.error || 'Could not update the course status.', 'warn');
         return;
       }
       await onRefresh?.();
-      triggerToast('Course submitted for review — an admin will approve it to publish.');
+      triggerToast(published ? 'Course published to the catalogue.' : 'Course moved back to drafts.');
     } catch {
-      triggerToast('Could not submit the course for review.', 'warn');
+      triggerToast('Could not update the course status.', 'warn');
     }
   };
 
@@ -1116,7 +1115,7 @@ export default function InstructorDashboard({
                         <span>Modules</span>
                       </div>
                       <div>
-                        <div className="font-bold text-emerald-400 text-xs">${(course.enrollmentCount * course.price).toLocaleString()}</div>
+                        <div className="font-bold text-emerald-400 text-xs">{formatAmount(course.enrollmentCount * course.price)}</div>
                         <span>Gross Revenue</span>
                       </div>
                     </div>
@@ -1129,10 +1128,10 @@ export default function InstructorDashboard({
                         Edit Modules
                       </button>
                       <button 
-                        onClick={() => course.isPublished ? triggerToast('This course is already published.', 'success') : submitForReview(course)}
-                        className="flex-1 text-center py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-[10px] cursor-pointer"
+                        onClick={() => setCoursePublished(course, !course.isPublished)}
+                        className="flex-1 text-center py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold text-[10px] cursor-pointer hover:bg-emerald-500/20 transition-colors"
                       >
-                        {course.isPublished ? 'Published ✓' : 'Submit for review'}
+                        {course.isPublished ? 'Unpublish' : 'Publish now'}
                       </button>
                     </div>
                   </div>

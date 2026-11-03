@@ -1070,27 +1070,6 @@ export default function StudentDashboard({
               </div>
             </div>
 
-            {/* Simulated Payment Logs */}
-            <div className="p-6 rounded-2xl glass-card space-y-4">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 font-sans">Corporate Invoice Billing History</h3>
-              <div className="space-y-3 font-mono text-xs">
-                {[
-                  { date: '2025-05-01', desc: 'SaaS Professional Path Activation', amt: '$79.00', status: 'Paid', method: 'Visa ending 4890' },
-                  { date: '2025-04-01', desc: 'SaaS Professional Path Renewal', amt: '$79.00', status: 'Paid', method: 'Visa ending 4890' }
-                ].map((inv, idx) => (
-                  <div key={idx} className="p-3 bg-white/[0.02] rounded-lg border border-white/5 flex justify-between">
-                    <div>
-                      <div className="font-bold text-slate-300">{inv.desc}</div>
-                      <span className="text-[10px] text-slate-500">{inv.date} via {inv.method}</span>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-extrabold text-blue-400">{inv.amt}</div>
-                      <span className="text-[9px] text-emerald-400 font-bold uppercase">{inv.status}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
           </div>
         )}
       </div>

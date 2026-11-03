@@ -180,6 +180,38 @@ export function attachUser(stateSource: StateSource): RequestHandler {
 }
 
 /**
+ * Any teaching staff: instructor, admin or super_admin, with or without an
+ * approval flag. Course creation and repository uploads are open to staff —
+ * an admin does not have to approve an instructor before they can teach.
+ */
+export function requireStaff(stateSource: StateSource): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const s = req.session ?? getSession(req);
+    if (!s) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    req.session = s;
+    if (s.role !== "instructor" && s.role !== "admin" && s.role !== "super_admin") {
+      res.status(403).json({ error: "Only instructors and admins can perform this action" });
+      return;
+    }
+    const { users } = resolveState(stateSource);
+    const user = users.find((u) => u.id === s.userId);
+    if (!user) {
+      res.status(401).json({ error: "User not found" });
+      return;
+    }
+    if (user.suspended) {
+      res.status(403).json({ error: "Account is suspended" });
+      return;
+    }
+    req.user = user;
+    next();
+  };
+}
+
+/**
  * Instructor (or admin/super_admin) who is approved.
  * Rejects unapproved instructors, non-instructor roles, and suspended accounts.
  *

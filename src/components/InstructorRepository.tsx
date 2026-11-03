@@ -5,7 +5,7 @@ import {
 import { Course, User } from '../types';
 import { getAuthHeaders } from '../lib/session';
 import {
-  ACCEPTED_MATERIAL_EXTENSIONS, MAX_MATERIAL_BYTES, StudyMaterial,
+  ACCEPTED_MATERIAL_EXTENSIONS, MATERIAL_KINDS, MAX_MATERIAL_BYTES, MaterialKind, StudyMaterial,
   fetchMyMaterials, formatBytes, readFileAsDataUrl, validateMaterialFile,
 } from '../lib/studyMaterials';
 
@@ -39,6 +39,7 @@ export default function InstructorRepository({
   const [fileError, setFileError] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [kind, setKind] = useState<MaterialKind>('material');
   const [courseId, setCourseId] = useState('');
   const [tags, setTags] = useState('');
   const [busyDelete, setBusyDelete] = useState<string | null>(null);
@@ -66,7 +67,8 @@ export default function InstructorRepository({
     load();
   }, [load]);
 
-  const myCourses = courses.filter(c => !c.instructorId || c.instructorId === currentUser.id);
+  const isManager = currentUser.role === 'admin' || currentUser.role === 'super_admin';
+  const myCourses = isManager ? courses : courses.filter(c => !c.instructorId || c.instructorId === currentUser.id);
 
   const onPickFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const picked = e.target.files?.[0];
@@ -97,6 +99,7 @@ export default function InstructorRepository({
           title: title.trim(),
           description: description.trim(),
           courseId: courseId || null,
+          kind,
           tags,
           fileName: file.name,
           fileData,
@@ -105,7 +108,7 @@ export default function InstructorRepository({
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(data.error || 'Upload failed');
       triggerToast(`${data.material?.title || title} published to the repository.`);
-      setTitle(''); setDescription(''); setCourseId(''); setTags(''); setFile(null);
+      setTitle(''); setDescription(''); setCourseId(''); setTags(''); setKind('material'); setFile(null);
       setFileError('');
       const input = document.getElementById('material-file-input') as HTMLInputElement | null;
       if (input) input.value = '';
@@ -177,17 +180,6 @@ export default function InstructorRepository({
 
   return (
     <div className="space-y-8 text-left" id="instructor-repository">
-      {currentUser.role === 'instructor' && currentUser.isApproved === false && (
-        <div className="flex items-start gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/10 text-left">
-          <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-          <div>
-            <p className="text-xs font-bold text-amber-300">Your instructor account is pending approval</p>
-            <p className="text-xs text-amber-200/70 mt-1">
-              Uploads stay blocked until an administrator approves your account in the Admin Panel.
-            </p>
-          </div>
-        </div>
-      )}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Upload form */}
         <form
@@ -228,6 +220,23 @@ export default function InstructorRepository({
               placeholder="What does this file cover, and which week it belongs to..."
               className={inputClass}
             />
+          </div>
+
+          <div>
+            <label className={labelClass} htmlFor="material-kind">Document type</label>
+            <select
+              id="material-kind"
+              value={kind}
+              onChange={e => setKind(e.target.value as MaterialKind)}
+              className={`${inputClass} cursor-pointer`}
+            >
+              {MATERIAL_KINDS.map(k => (
+                <option key={k.value} value={k.value}>{k.label}</option>
+              ))}
+            </select>
+            <p className="text-[10px] text-slate-500 mt-1">
+              Question papers and answer keys are the exam material students sit in the Assessment tab.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

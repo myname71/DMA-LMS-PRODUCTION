@@ -3,6 +3,7 @@ import {
   CheckCircle, AlertCircle, Upload, FileText, X,
   ArrowRight, ArrowLeft, Shield, Zap, Star, Crown
 } from 'lucide-react';
+import { formatAmount } from '../lib/currency';
 
 interface RegisterPageProps {
   onSuccess: (user: any, token: string) => void;
@@ -351,7 +352,7 @@ export default function RegisterPage({ onSuccess, onNavigateLogin, onNavigateHom
                           <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${plan.badgeStyle}`}>{plan.badge}</span>
                         </div>
                         <div className="mb-3">
-                          <span className="text-xl font-extrabold text-white">{plan.price === 0 ? 'Free' : `$${plan.price}`}</span>
+                          <span className="text-xl font-extrabold text-white">{plan.price === 0 ? 'Free' : formatAmount(plan.price)}</span>
                           {plan.price > 0 && <span className="text-xs text-slate-400 ml-1">{plan.period}</span>}
                         </div>
                         <ul className="space-y-1">

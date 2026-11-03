@@ -27,7 +27,7 @@ import {
   getSession,
   requireSession,
   requireAdminSession as requireAdmin,
-  requireApprovedInstructor,
+  requireStaff,
 } from "./middleware/authorize";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
@@ -442,7 +442,8 @@ app.post("/api/auth/login", async (req: Request, res: Response) => {
     const user = state.users.find((u: any) => u.email === email.toLowerCase());
     if (!user) { recordLoginFailure(key); res.status(401).json({ error: "Invalid credentials" }); return; }
     if (user.suspended) { res.status(403).json({ error: "Account suspended. Contact your administrator." }); return; }
-    if (!user.isApproved) { res.status(403).json({ error: "Account pending approval. Contact your administrator." }); return; }
+    // NOTE: instructors are not gated on `isApproved` — they can sign in, create
+    // and publish courses, and upload material immediately after registering.
 
     if (!user.password) {
       // Account exists but has no password (e.g. created via invite or import).
@@ -702,7 +703,7 @@ app.get("/api/courses/:id", (req: Request, res: Response) => {
 
 app.post(
   "/api/courses/create",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   async (req: Request, res: Response) => {
     const session = req.session!;
     const user = req.user || state.users.find((u: any) => u.id === session.userId);
@@ -744,10 +745,11 @@ app.post(
       price: isFree ? 0 : price || 0,
       isFree: !!isFree,
       image: image || "",
-      // Admin / super_admin courses go live immediately — no publishing approval.
-      // Instructor courses stay drafts until submitted for review and approved.
-      isPublished: isManager,
-      approvalStatus: isManager ? "approved" : "draft",
+      // Every staff-created course is live immediately. There is no admin
+      // approval step: an instructor publishing to the catalogue is enough.
+      // They can still unpublish from the course editor.
+      isPublished: b.isPublished !== false,
+      approvalStatus: "approved",
       enrollmentCount: 0,
       lessons: Array.isArray(lessons) ? lessons : [],
       quizzes: Array.isArray(quizzes) ? quizzes : [],
@@ -778,7 +780,7 @@ const COURSE_MEDIA_MIME: Record<string, string> = {
 
 app.post(
   "/api/courses/media",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   (req: Request, res: Response) => {
     const session = req.session!;
     const b = req.body || {};
@@ -859,32 +861,12 @@ app.post("/api/courses/update", (req: Request, res: Response) => {
   if (!isOwner && !isAdmin) {
     res.status(403).json({ error: "Unauthorized" }); return;
   }
-  // Instructors editing their own course must be approved
-  if (isOwner && session.role === "instructor" && actor?.isApproved === false) {
-    res.status(403).json({ error: "Instructor account is pending approval" }); return;
-  }
   state.courses[idx] = { ...course, ...updates };
   saveState();
   res.json({ status: "success", course: state.courses[idx] });
 });
 
-app.post("/api/courses/submit-for-review", (req: Request, res: Response) => {
-  const session = requireSession(req, res);
-  if (!session) return;
-  const actor = state.users.find((u: any) => u.id === session.userId);
-  if (actor?.suspended) { res.status(403).json({ error: "Account is suspended" }); return; }
-  if (session.role === "instructor" && actor?.isApproved === false) {
-    res.status(403).json({ error: "Instructor account is pending approval" }); return;
-  }
-  const { courseId } = req.body;
-  const course = state.courses.find((c: any) => c.id === courseId && c.instructorId === session.userId);
-  if (!course) { res.status(404).json({ error: "Course not found or not owned by you" }); return; }
-  course.approvalStatus = "pending";
-  course.isPublished = false;
-  addLog(`Course "${course.title}" submitted for review`, "course_review", session.userId);
-  saveState();
-  res.json({ status: "success" });
-});
+// Publishing is instant for staff — there is no review queue to submit into.
 
 app.post("/api/courses/:id/enroll", (req: Request, res: Response) => {
   const session = requireSession(req, res);
@@ -1687,22 +1669,27 @@ function base64Bytes(base64: string): number {
 }
 
 // 1. Public listing for students (metadata only)
-app.get("/api/study-materials", (_req: Request, res: Response) => {
+app.get("/api/study-materials", (req: Request, res: Response) => {
+  const session = getSession(req);
+  const isStaff = !!session && ["instructor", "admin", "super_admin"].includes(session.role);
   const materials = (state.studyMaterials || [])
+    // Answer keys are never exposed in the public catalogue.
+    .filter((m: any) => isStaff || m.kind !== "answer-key")
     .slice()
     .sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
     .map(materialSummary);
   res.json({ materials });
 });
 
-// 2. Instructor's own materials
+// 2. Staff material manager — admins see every upload, instructors see their own
 app.get(
   "/api/study-materials/all",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   (req: Request, res: Response) => {
     const session = req.session!;
+    const isManager = session.role === "admin" || session.role === "super_admin";
     const materials = (state.studyMaterials || [])
-      .filter((m: any) => m.uploaderId === session.userId)
+      .filter((m: any) => isManager || m.uploaderId === session.userId)
       .slice()
       .sort((a: any, b: any) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")))
       .map(materialSummary);
@@ -1710,10 +1697,11 @@ app.get(
   }
 );
 
-// 3. Instructor file upload (base64 data URL)
+// 3. Staff file upload (base64 data URL) — material, question paper or answer key
+const MATERIAL_KINDS = ["material", "question-paper", "answer-key", "syllabus"];
 app.post(
   "/api/study-materials",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   (req: Request, res: Response) => {
     const session = req.session!;
     const user = req.user as any;
@@ -1755,11 +1743,15 @@ app.post(
       .filter(Boolean)
       .slice(0, 12);
 
+    const requestedKind = String(b.kind || "material").trim().toLowerCase();
+    const kind = MATERIAL_KINDS.includes(requestedKind) ? requestedKind : "material";
+
     const material = {
       id: `mat_${Date.now()}`,
       title,
       description: String(b.description || "").trim().slice(0, 1000),
       courseId: String(b.courseId || "").trim() || null,
+      kind,
       tags,
       fileName,
       fileType: ext,
@@ -1784,7 +1776,7 @@ app.post(
 // 4. Delete own material (admins/mods may remove any)
 app.delete(
   "/api/study-materials/:id",
-  requireApprovedInstructor(() => state),
+  requireStaff(() => state),
   (req: Request, res: Response) => {
     const session = req.session!;
     const idx = (state.studyMaterials || []).findIndex((m: any) => m.id === req.params.id);
@@ -1809,6 +1801,9 @@ app.post("/api/study-materials/:id/download", (req: Request, res: Response) => {
   if (!session) return;
   const material = (state.studyMaterials || []).find((m: any) => m.id === req.params.id);
   if (!material) { res.status(404).json({ error: "Material not found" }); return; }
+  if (material.kind === "answer-key" && !["instructor", "admin", "super_admin"].includes(session.role)) {
+    res.status(403).json({ error: "Answer keys are restricted to teaching staff" }); return;
+  }
 
   // Count tracking only for enrolled students (materials with no course link
   // count for every signed-in learner).
@@ -2317,11 +2312,21 @@ app.post("/api/exams/:id/attempt", (req: Request, res: Response) => {
   const publicBreakdown = internalBreakdown.map(({ correctAnswer: _ca, ...b }) => b);
   const score = exam.questions.length > 0 ? Math.round((correct / exam.questions.length) * 100) : 0;
   const passed = score >= (exam.passingScore || 70);
-  const attempt = {
+  const attempt: any = {
     id: `ea_${Date.now()}`, userId: session.userId, examId: exam.id, examTitle: exam.title,
     score, passed, correct, total: exam.questions.length, breakdown: internalBreakdown,
     timeTaken: timeTaken || 0, attemptedAt: new Date().toISOString(),
   };
+  // Passing a course exam issues the certificate automatically.
+  if (passed && exam.courseId) {
+    const certificate = issueCertificate({
+      userId: session.userId,
+      courseId: exam.courseId,
+      grade: score,
+      source: `exam:${exam.id}`,
+    });
+    if (certificate) attempt.certificateId = certificate.id;
+  }
   state.examAttempts.push(attempt);
   addLog(`Exam attempt: ${exam.title} — ${score}% (${passed ? "PASS" : "FAIL"})`, "exam", session.userId);
   saveState();
@@ -2344,7 +2349,43 @@ app.get("/api/exams/all-results", (req: Request, res: Response) => {
   res.json({ results: state.examAttempts });
 });
 
-// ─── Certificate Routes ───────────────────────────────────────────────────────
+// ─── Certificates ─────────────────────────────────────────────────────────────
+
+/**
+ * Issue (or return the existing) certificate for a user on a course.
+ * Called automatically when a course exam is passed, so a student who clears
+ * the assessment receives their credential without a manual step.
+ */
+function issueCertificate(opts: {
+  userId: string; courseId: string; grade?: number | null; source?: string;
+}): any | null {
+  const { userId, courseId, grade = null, source = "exam" } = opts;
+  if (!courseId) return null;
+  const course = state.courses.find((c: any) => c.id === courseId);
+  if (!course) return null;
+  const existing = state.certificates.find((c: any) => c.userId === userId && c.courseId === courseId);
+  if (existing) return existing;
+  const user = state.users.find((u: any) => u.id === userId);
+  const template = state.certTemplates.find((t: any) => t.isDefault) || state.certTemplates[0] || null;
+  const certId = `cert_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const cert: any = {
+    id: certId, userId, userName: user?.name || "Student",
+    courseId, courseTitle: course.title,
+    templateId: template?.id || "tmpl_default",
+    templateName: template?.name || "Standard",
+    credentialUrl: `/certificates/verify/${certId}`,
+    issuedAt: new Date().toISOString(),
+    grade, source,
+  };
+  state.certificates.push(cert);
+  const enrollment = state.enrollments.find((e: any) => e.userId === userId && e.courseId === courseId);
+  if (enrollment) {
+    enrollment.certificateId = certId;
+    enrollment.completedAt = enrollment.completedAt || new Date().toISOString();
+  }
+  addLog(`Certificate issued: ${course.title} → ${user?.name || userId}`, "certificate", userId);
+  return cert;
+}
 
 app.get("/api/certificates/user/:userId", (req: Request, res: Response) => {
   const session = requireSession(req, res);

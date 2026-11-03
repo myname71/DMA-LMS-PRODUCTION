@@ -1,6 +1,7 @@
 import React from 'react';
 import { BookOpen, Clock, Star, Users, ChevronRight, Lock } from 'lucide-react';
 import { Course } from '../../types';
+import { formatAmount, formatPrice } from '../../lib/currency';
 
 interface CourseCardProps {
   course: Course;
@@ -44,7 +45,7 @@ export default function CourseCard({ course, isEnrolled = false, progress = 0, o
 
         {/* Price badge */}
         <span className="absolute top-2 right-2 px-2 py-0.5 rounded bg-black/60 text-white text-[10px] font-bold">
-          {course.price === 0 ? 'Free' : `$${course.price}`}
+          {formatPrice(course.price)}
         </span>
 
         {/* Progress bar for enrolled */}
@@ -100,7 +101,7 @@ export default function CourseCard({ course, isEnrolled = false, progress = 0, o
               onClick={e => { e.stopPropagation(); onEnroll(course.id); }}
               className="w-full mt-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all cursor-pointer"
             >
-              Enroll {course.price === 0 ? 'Free' : `— $${course.price}`}
+              Enroll {course.price === 0 ? 'Free' : `— ${formatAmount(course.price)}`}
             </button>
           )
         )}

@@ -107,7 +107,7 @@ No wrapper is needed. The bundle is CommonJS (`.cjs`), so it runs correctly even
 2. Register Student / Instructor.
 3. Sign in with seeded admin → Admin Panel + Site CMS.
 4. Enroll as student → Student Dashboard.
-5. Instructor approval flow (if used).
+5. Register an instructor → publish a course (no admin approval needed) → it appears in the catalogue and home page.
 
 ## Troubleshooting
 

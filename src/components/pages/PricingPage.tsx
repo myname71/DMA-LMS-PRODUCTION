@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Check, Zap, Star, Shield, ArrowRight, Users, BookOpen, Award } from 'lucide-react';
+import { formatAmount } from '../../lib/currency';
 
 interface PricingPageProps {
   onRegister: () => void;
@@ -152,7 +153,7 @@ export default function PricingPage({ onRegister, onSignIn }: PricingPageProps) 
               <div>
                 <div className="flex items-end gap-1">
                   <span className="text-4xl font-extrabold text-white">
-                    {plan.price === 0 ? 'Free' : `$${displayPrice}`}
+                    {plan.price === 0 ? 'Free' : formatAmount(displayPrice)}
                   </span>
                   {plan.price > 0 && <span className="text-slate-500 text-xs mb-1.5">{plan.period}</span>}
                 </div>

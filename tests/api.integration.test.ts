@@ -213,3 +213,105 @@ test("login is rate limited per IP+email", async () => {
   }
   assert.equal(last, 429);
 });
+
+test("unapproved instructor publishes a course, uploads papers and a pass issues a certificate", async () => {
+  // Instructors register with isApproved=false — that must not block teaching.
+  const instructorEmail = "teach1@example.test";
+  const reg = await api("POST", "/api/auth/register", {
+    name: "Tess Cher", email: instructorEmail, password: "Teach-Pw-123", role: "instructor",
+  });
+  assert.equal(reg.status, 201);
+  assert.equal(reg.body.user.isApproved, false);
+
+  const teacher = await api("POST", "/api/auth/login", { email: instructorEmail, password: "Teach-Pw-123" });
+  assert.equal(teacher.status, 200);
+
+  const created = await api("POST", "/api/courses/create", {
+    title: "Smart Factory Fundamentals",
+    category: "Smart Factory",
+    description: "MQTT telemetry, edge gateways and factory floors.",
+    price: 999,
+    lessons: [{ id: "l1", title: "Intro", type: "video", duration: "10 mins", contentUrl: "", isRequired: true }],
+  }, teacher.cookie);
+  assert.equal(created.status, 200);
+  assert.equal(created.body.course.isPublished, true, "course must go live without admin approval");
+  assert.equal(created.body.course.approvalStatus, "approved");
+  const courseId = created.body.course.id;
+
+  // The course is in the public catalogue straight away.
+  const catalogue = await api("GET", "/api/courses");
+  assert.ok(catalogue.body.some((c: any) => c.id === courseId));
+
+  // Repository uploads: study material and an exam question paper.
+  const fileData = "data:text/plain;base64," + Buffer.from("Q1. MQTT?").toString("base64");
+  const upload = (kind: string, title: string) => api("POST", "/api/study-materials", {
+    title, kind, courseId, fileName: `${kind}.txt`, fileData, tags: "exam, week-1",
+  }, teacher.cookie);
+  const paper = await upload("question-paper", "Week 1 question paper");
+  assert.equal(paper.status, 201);
+  assert.equal(paper.body.material.kind, "question-paper");
+  const answerKey = await upload("answer-key", "Week 1 answer key");
+  assert.equal(answerKey.status, 201);
+
+  // Exam with its answer key — graded server-side.
+  const exam = await api("POST", "/api/exams/create", {
+    title: "Smart Factory Final Exam", courseId, passingScore: 50, isPublished: true,
+    questions: [
+      { id: "q1", question: "MQTT is a?", options: ["Broker protocol", "Bootloader", "Metal"], correctAnswer: 0 },
+      { id: "q2", question: "A digital twin is?", options: ["A logo", "A live virtual replica"], correctAnswer: 1 },
+    ],
+  }, teacher.cookie);
+  assert.equal(exam.status, 200);
+  const examId = exam.body.exam.id;
+
+  const studentEmail = "learn1@example.test";
+  await api("POST", "/api/auth/register", { name: "Lea Ner", email: studentEmail, password: "Learn-Pw-123" });
+  const student = await api("POST", "/api/auth/login", { email: studentEmail, password: "Learn-Pw-123" });
+  assert.equal(student.status, 200);
+
+  // Answer keys stay staff-only: hidden from the public list, download refused.
+  const publicList = await api("GET", "/api/study-materials");
+  assert.ok(!publicList.body.materials.some((m: any) => m.kind === "answer-key"));
+  const staffList = await api("GET", "/api/study-materials", undefined, teacher.cookie);
+  assert.ok(staffList.body.materials.some((m: any) => m.kind === "answer-key"));
+  assert.equal(
+    (await api("POST", `/api/study-materials/${answerKey.body.material.id}/download`, {}, student.cookie)).status,
+    403,
+  );
+
+  assert.equal((await api("POST", `/api/courses/${courseId}/enroll`, {}, student.cookie)).status, 200);
+
+  const attempt = await api("POST", `/api/exams/${examId}/attempt`, { answers: [0, 1] }, student.cookie);
+  assert.equal(attempt.status, 200);
+  assert.equal(attempt.body.attempt.score, 100);
+  assert.equal(attempt.body.attempt.passed, true);
+  assert.ok(attempt.body.attempt.certificateId, "a pass must issue a certificate");
+
+  const certs = await api("GET", `/api/certificates/user/${student.body.user.id}`, undefined, student.cookie);
+  assert.equal(certs.status, 200);
+  assert.equal(certs.body.certificates.length, 1);
+  assert.equal(certs.body.certificates[0].courseId, courseId);
+});
+
+test("admin can create a course and it is live immediately", async () => {
+  const EMAIL = "seed.super@example.test";
+  let login = await api("POST", "/api/auth/login", { email: EMAIL, password: ADMIN_PW });
+  assert.equal(login.status, 200);
+  if (login.body.user.mustChangePassword) {
+    await api("POST", "/api/auth/change-password",
+      { currentPassword: ADMIN_PW, newPassword: "Super-Admin-Pw-3!" }, login.cookie);
+    login = await api("POST", "/api/auth/login", { email: EMAIL, password: "Super-Admin-Pw-3!" });
+  }
+
+  const created = await api("POST", "/api/courses/create", {
+    title: "Robotics & PLC Programming", category: "Robotics", level: "Intermediate",
+    description: "Ladder logic and Siemens S7-1200 labs.", price: 1999, isPublished: true,
+    instructorId: login.body.user.id,
+  }, login.cookie);
+  assert.equal(created.status, 200);
+  assert.equal(created.body.course.isPublished, true);
+  assert.equal(created.body.course.approvalStatus, "approved");
+
+  const state = await api("GET", "/api/db-state", undefined, login.cookie);
+  assert.ok(state.body.courses.some((c: any) => c.id === created.body.course.id));
+});

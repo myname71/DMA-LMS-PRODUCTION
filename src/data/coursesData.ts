@@ -1,41 +1,5 @@
-import { Course, User, SubscriptionPlan } from '../types';
+import { Course, SubscriptionPlan } from '../types';
 
-export const DEMO_USERS: { [key: string]: User } = {
-  student: {
-    id: 'u_student',
-    name: 'Alex Rivera (Student)',
-    email: 'student@digitalmanufacturing.academy',
-    role: 'student',
-    joinedAt: '2025-01-10',
-    avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop',
-    subscriptionPlan: 'pro',
-  },
-  instructor: {
-    id: 'u_instructor',
-    name: 'Prof. Dr. Abdur Rahman (Instructor)',
-    email: 'instructor@digitalmanufacturing.academy',
-    role: 'instructor',
-    joinedAt: '2024-05-15',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop',
-    isApproved: true,
-  },
-  admin: {
-    id: 'u_admin',
-    name: 'Sarah Connor (Admin)',
-    email: 'admin@digitalmanufacturing.academy',
-    role: 'admin',
-    joinedAt: '2024-01-01',
-    avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop',
-  },
-  super_admin: {
-    id: 'u_super_admin',
-    name: 'Director James Smith (Super Admin)',
-    email: 'superadmin@digitalmanufacturing.academy',
-    role: 'super_admin',
-    joinedAt: '2023-01-01',
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop',
-  },
-};
 
 export const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
   {

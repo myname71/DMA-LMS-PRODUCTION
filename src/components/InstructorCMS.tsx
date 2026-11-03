@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Edit3, Save, X, Plus, Trash2, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Course, User } from '../types';
 import { getAuthHeaders } from '../lib/session';
+import { formatPrice } from '../lib/currency';
 
 interface InstructorCMSProps {
   currentUser: User;
@@ -97,21 +98,27 @@ export default function InstructorCMS({ currentUser, courses, onRefresh, trigger
     }
   };
 
-  const handleSubmitForReview = async (courseId: string) => {
+  const togglePublished = async (course: Course) => {
+    const published = !course.isPublished;
     try {
-      const resp = await fetch('/api/courses/submit-for-review', {
+      const resp = await fetch('/api/courses/update', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-        body: JSON.stringify({ courseId }),
+        body: JSON.stringify({
+          courseId: course.id,
+          updates: { isPublished: published, approvalStatus: published ? 'approved' : 'draft' },
+        }),
       });
       const data = await resp.json();
-      if (data.status === 'success') {
-        triggerToast('Course submitted for admin review!');
-        await onRefresh();
+      if (data.status !== 'success') {
+        triggerToast(data.error || 'Could not change the publishing status', 'warn');
+        return;
       }
+      triggerToast(published ? 'Course published to the catalogue.' : 'Course moved back to drafts.');
+      await onRefresh();
     } catch {
-      triggerToast('Submission error', 'warn');
+      triggerToast('Connection error while changing the status', 'warn');
     }
   };
 
@@ -251,7 +258,6 @@ export default function InstructorCMS({ currentUser, courses, onRefresh, trigger
       ) : (
         <div className="space-y-4">
           {myCourses.map(course => {
-            const approvalStatus = (course as any).approvalStatus || (course.isPublished ? 'approved' : 'pending');
             return (
               <div key={course.id} className="p-5 rounded-2xl glass-card hover:border-white/20 transition-all">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -261,25 +267,15 @@ export default function InstructorCMS({ currentUser, courses, onRefresh, trigger
                       <span className="text-[9px] font-mono text-slate-500 uppercase bg-white/5 px-2 py-0.5 rounded border border-white/5">{course.category}</span>
                     </div>
                     <h4 className="text-sm font-extrabold text-white leading-snug">{course.title}</h4>
-                    <p className="text-[10px] text-slate-500">{course.lessons.length} lessons • {course.duration} • ${course.price} • {course.enrollmentCount} enrolled</p>
+                    <p className="text-[10px] text-slate-500">{course.lessons.length} lessons • {course.duration} • {formatPrice(course.price)} • {course.enrollmentCount} enrolled</p>
                   </div>
                   <div className="flex gap-2 shrink-0 flex-wrap">
-                    {approvalStatus === 'draft' && (
-                      <button
-                        onClick={() => handleSubmitForReview(course.id)}
-                        className="px-3 py-1.5 rounded-lg bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-bold cursor-pointer hover:bg-amber-500/30 transition-colors flex items-center gap-1"
-                      >
-                        <Eye className="w-3.5 h-3.5" /> Submit for Review
-                      </button>
-                    )}
-                    {approvalStatus === 'rejected' && (
-                      <button
-                        onClick={() => handleSubmitForReview(course.id)}
-                        className="px-3 py-1.5 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-bold cursor-pointer hover:bg-rose-500/30 transition-colors"
-                      >
-                        Resubmit
-                      </button>
-                    )}
+                    <button
+                      onClick={() => togglePublished(course)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer transition-colors flex items-center gap-1 ${course.isPublished ? 'bg-slate-500/20 border border-slate-500/30 text-slate-300 hover:bg-slate-500/30' : 'bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/30'}`}
+                    >
+                      {course.isPublished ? <><EyeOff className="w-3.5 h-3.5" /> Unpublish</> : <><Eye className="w-3.5 h-3.5" /> Publish</>}
+                    </button>
                     <button
                       onClick={() => openEdit(course)}
                       className="px-3 py-1.5 rounded-lg bg-blue-600/20 border border-blue-500/30 text-blue-400 text-xs font-bold cursor-pointer hover:bg-blue-600/30 transition-colors flex items-center gap-1"

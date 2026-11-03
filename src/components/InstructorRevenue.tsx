@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { DollarSign, Plus, Building2, CreditCard, CheckCircle, Clock, AlertCircle, ArrowDownToLine, Banknote } from 'lucide-react';
 import { Course, User } from '../types';
 import { getAuthHeaders } from '../lib/session';
+import { formatAmount } from '../lib/currency';
 
 interface InstructorRevenueProps {
   currentUser: User;
@@ -98,7 +99,7 @@ export default function InstructorRevenue({ currentUser, courses, triggerToast }
       return;
     }
     if (amount > availableBalance) {
-      triggerToast(`Amount exceeds available balance ($${availableBalance.toFixed(2)}).`, 'warn');
+      triggerToast(`Amount exceeds available balance (${formatAmount(availableBalance)}).`, 'warn');
       return;
     }
     if (!withdrawAccount) {
@@ -118,7 +119,7 @@ export default function InstructorRevenue({ currentUser, courses, triggerToast }
       });
       const data = await resp.json();
       if (data.status === 'success') {
-        triggerToast(`Withdrawal of $${amount} requested successfully!`);
+        triggerToast(`Withdrawal of ${formatAmount(amount)} requested successfully!`);
         setWithdrawAmount('');
         setWithdrawAccount('');
         setActiveSection('overview');
@@ -171,10 +172,10 @@ export default function InstructorRevenue({ currentUser, courses, triggerToast }
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: 'Gross Earnings', value: `$${totalRevenue.toLocaleString()}`, sub: 'Platform total', color: 'text-slate-300' },
-          { label: 'Your Share (70%)', value: `$${instructorShare.toLocaleString()}`, sub: 'After platform fee', color: 'text-blue-400' },
-          { label: 'Available', value: `$${availableBalance.toFixed(2)}`, sub: 'Ready to withdraw', color: 'text-emerald-400' },
-          { label: 'Pending', value: `$${pendingWithdrawal.toFixed(2)}`, sub: 'Awaiting processing', color: 'text-amber-400' },
+          { label: 'Gross Earnings', value: formatAmount(totalRevenue), sub: 'Platform total', color: 'text-slate-300' },
+          { label: 'Your Share (70%)', value: formatAmount(instructorShare), sub: 'After platform fee', color: 'text-blue-400' },
+          { label: 'Available', value: formatAmount(availableBalance), sub: 'Ready to withdraw', color: 'text-emerald-400' },
+          { label: 'Pending', value: formatAmount(pendingWithdrawal), sub: 'Awaiting processing', color: 'text-amber-400' },
         ].map((item, idx) => (
           <div key={idx} className="p-5 rounded-2xl glass-card space-y-1">
             <p className="text-[10px] uppercase font-bold text-slate-500">{item.label}</p>
@@ -333,7 +334,7 @@ export default function InstructorRevenue({ currentUser, courses, triggerToast }
                   value={withdrawAmount}
                   onChange={e => setWithdrawAmount(e.target.value)}
                   max={availableBalance}
-                  placeholder={`Max $${availableBalance.toFixed(2)}`}
+                  placeholder={`Max ${formatAmount(availableBalance)}`}
                   className="w-full text-xs p-2.5 rounded-lg glass-input text-white"
                 />
               </div>
