@@ -39,10 +39,10 @@ import PricingPage from './components/pages/PricingPage';
 import { GENERAL_FAQS } from './data/coursesData';
 
 // ── Android APK download ─────────────────────────────────────────────────────
-// Paste the hosted APK URL here (for example "/downloads/dma-academy.apk" or a
-// direct file-host download link). While it is empty the download banner shows
-// a disabled "coming soon" state instead of linking nowhere.
-const APK_DOWNLOAD_URL = '';
+// Google Drive direct-download URL for the signed APK. While it is empty the
+// download banner shows a disabled "coming soon" state instead of linking
+// nowhere.
+const APK_DOWNLOAD_URL = 'https://drive.google.com/uc?export=download&id=1Zbe8V3HcC55xO4LuV1useRlTm8v-XUJy';
 
 export default function App() {
   // Global States loaded asynchronously from Express Server API
@@ -1053,9 +1053,11 @@ export default function App() {
             {APK_DOWNLOAD_URL ? (
               <a
                 href={APK_DOWNLOAD_URL}
-                download
+                target="_blank"
+                rel="noopener noreferrer"
                 className="flex items-center gap-2 px-5 py-3 rounded-xl border border-blue-500/50 bg-blue-500/10 hover:bg-blue-600 text-blue-200 hover:text-white text-xs font-extrabold transition-all hover:-translate-y-0.5"
                 id="apk-download-btn"
+                aria-label="Download the DMA Academy Android APK"
               >
                 <Download className="w-3.5 h-3.5" />
                 Download APK
@@ -1076,7 +1078,7 @@ export default function App() {
         <div className="max-w-5xl mx-auto mt-8 pt-6 border-t border-slate-800/60">
           <p className="text-[10px] text-slate-500 font-mono text-center leading-relaxed">
             <span className="text-blue-500 font-bold">Android 7.0+:</span>{' '}
-            download the APK, open it on your device, and allow installs from this source when prompted. Your courses stay in sync with your academy account.
+            tap Download APK, confirm <strong>Download anyway</strong> on the Google Drive page, then open the file and allow installs from this source when prompted. Your courses stay in sync with your academy account.
           </p>
         </div>
       </section>
