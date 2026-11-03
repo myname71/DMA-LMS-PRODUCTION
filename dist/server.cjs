@@ -3200,6 +3200,9 @@ async function startServer() {
       res.setHeader("Cache-Control", cacheControlFor(filePath));
     }
   }));
+  app.get(["/assets/*", "*.js", "*.css", "*.map", "*.webmanifest"], (_req, res) => {
+    res.status(404).type("text/plain").send("Static asset not found \u2014 the deployed build is out of date.");
+  });
   app.get("*", (_req, res) => {
     res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
     res.sendFile(import_path.default.join(distPath, "index.html"));

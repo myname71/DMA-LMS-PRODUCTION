@@ -2677,6 +2677,14 @@ async function startServer(): Promise<void> {
       res.setHeader("Cache-Control", cacheControlFor(filePath));
     },
   }));
+
+  // A missing build asset must 404 instead of falling through to the SPA shell.
+  // Serving index.html (200, text/html) for a hashed bundle makes the browser
+  // refuse to execute it and the whole app goes blank with no visible error.
+  app.get(["/assets/*", "*.js", "*.css", "*.map", "*.webmanifest"], (_req: Request, res: Response) => {
+    res.status(404).type("text/plain").send("Static asset not found — the deployed build is out of date.");
+  });
+
   app.get("*", (_req: Request, res: Response) => {
     res.setHeader("Cache-Control", "public, max-age=0, must-revalidate");
     res.sendFile(path.join(distPath, "index.html"));
