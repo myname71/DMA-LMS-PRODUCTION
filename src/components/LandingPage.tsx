@@ -14,7 +14,8 @@ import {
   ArrowRight, Award, Brain, Calendar, ShieldCheck, 
   Handshake, Users, ChevronRight, HelpCircle, 
   Play, Check, Sparkles, AlertCircle, MessageSquare,
-  Linkedin, Mail, Twitter
+  Linkedin, Mail, Twitter,
+  Factory, Cog, Cuboid, Printer, Truck, Network, Cpu, Bot, Boxes, Warehouse, ScanLine
 } from 'lucide-react';
 
 import javaidButt from '../assets/images/team/javaid-butt.webp';
@@ -31,6 +32,47 @@ import ProjectJourney from './ProjectJourney';
 import PlexusCanvas from './PlexusCanvas';
 
 const RESUME_KEY = 'dma_last_free_course';
+
+/* ─── Hero banner backdrop: drifting Industry 4.0 / 5.0 capability icons ─────
+   Purely decorative, themed to the academy palette (blue → indigo → cyan).
+   Positions are percentages of the hero banner so they scale with the section. */
+const HERO_INDUSTRY_ICONS = [
+  { Icon: Factory,   label: 'Smart Factory',        pos: 'top-[4%] left-[2%]',          drift: 'dma-icon-drift-1', delay: '0s',    duration: '15s', tone: 'border-blue-400/25 bg-blue-500/[0.07] text-blue-300' },
+  { Icon: Printer,   label: '3D Printing',          pos: 'top-[7%] right-[3%] hidden sm:block', drift: 'dma-icon-drift-2', delay: '-3s', duration: '17s', tone: 'border-cyan-400/25 bg-cyan-500/[0.06] text-cyan-300' },
+  { Icon: Cuboid,    label: 'Digital Twin',         pos: 'top-[30%] left-[5%] hidden lg:block', drift: 'dma-icon-drift-3', delay: '-6s', duration: '19s', tone: 'border-indigo-400/25 bg-indigo-500/[0.07] text-indigo-300' },
+  { Icon: Cpu,       label: 'Edge Intelligence',    pos: 'top-[16%] left-[39%] hidden xl:block', drift: 'dma-icon-drift-2', delay: '-9s', duration: '21s', tone: 'border-blue-400/20 bg-blue-500/[0.05] text-blue-300' },
+  { Icon: Network,   label: 'Industry 5.0',         pos: 'top-[45%] right-[2%] hidden md:block', drift: 'dma-icon-drift-1', delay: '-5s', duration: '18s', tone: 'border-sky-400/25 bg-sky-500/[0.06] text-sky-300' },
+  { Icon: Cog,       label: 'Digital Manufacturing', pos: 'top-[63%] left-[43%] hidden md:block', drift: 'dma-icon-drift-3', delay: '-11s', duration: '23s', tone: 'border-indigo-400/20 bg-indigo-500/[0.05] text-indigo-300' },
+  { Icon: Truck,     label: 'Digital Supply Chain', pos: 'bottom-[17%] left-[3%]',       drift: 'dma-icon-drift-2', delay: '-7s', duration: '16s', tone: 'border-cyan-400/25 bg-cyan-500/[0.06] text-cyan-300' },
+  { Icon: Boxes,     label: 'Smart Logistics',      pos: 'bottom-[9%] left-[38%] hidden lg:block', drift: 'dma-icon-drift-1', delay: '-13s', duration: '20s', tone: 'border-blue-400/20 bg-blue-500/[0.05] text-blue-300' },
+  { Icon: Bot,       label: 'Cobotics',             pos: 'bottom-[12%] right-[7%] hidden sm:block', drift: 'dma-icon-drift-3', delay: '-2s', duration: '18s', tone: 'border-indigo-400/25 bg-indigo-500/[0.06] text-indigo-300' },
+  { Icon: Warehouse, label: 'Connected Plant',      pos: 'bottom-[30%] right-[30%] hidden xl:block', drift: 'dma-icon-drift-2', delay: '-15s', duration: '24s', tone: 'border-sky-400/20 bg-sky-500/[0.05] text-sky-300' },
+  { Icon: ScanLine,  label: 'Digital Thread',       pos: 'top-[80%] left-[16%] hidden md:block', drift: 'dma-icon-drift-1', delay: '-8s', duration: '22s', tone: 'border-cyan-400/20 bg-cyan-500/[0.05] text-cyan-300' },
+];
+
+function HeroIndustryIcons() {
+  return (
+    <div
+      className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none opacity-70"
+      aria-hidden="true"
+    >
+      {HERO_INDUSTRY_ICONS.map(({ Icon, label, pos, drift, delay, duration, tone }) => (
+        <div
+          key={label}
+          className={`absolute ${pos} ${drift}`}
+          style={{ animationDelay: delay, animationDuration: duration }}
+        >
+          <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 shadow-[0_0_24px_rgba(37,99,235,0.08)] ${tone}`}>
+            <Icon className="w-5 h-5 shrink-0" strokeWidth={1.5} />
+            <span className="hidden sm:block text-[8px] font-bold uppercase tracking-[0.18em] text-slate-300/75 font-mono whitespace-nowrap">
+              {label}
+            </span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface LandingPageProps {
   courses: Course[];
@@ -211,8 +253,10 @@ export default function LandingPage({
       </div>
 
       {/* Hero Section */}
-      <section className="relative w-full px-4 sm:px-6 lg:px-8 z-10">
-        <div className="max-w-7xl mx-auto pt-12 pb-16">
+      <section className="relative w-full px-4 sm:px-6 lg:px-8 z-10 overflow-hidden">
+        {/* Drifting Industry 4.0 / 5.0 icons behind the hero banner content */}
+        <HeroIndustryIcons />
+        <div className="relative z-10 max-w-7xl mx-auto pt-12 pb-16">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-16 items-center">
           {/* Hero Left Content */}
           <div className="text-left space-y-5">

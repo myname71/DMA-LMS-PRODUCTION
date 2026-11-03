@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { 
   CheckCircle, AlertCircle, Award, Compass, Sparkles, Shield,
   BookOpen, Layers, Bot, Database, Calendar, Mail, Phone, MapPin, Loader2, ArrowRight,
-  Smartphone, Download
+  Smartphone, Download, ArrowUp
 } from 'lucide-react';
 import { Course, User, Enrollment, Certificate, LearningPath, SiteNotice } from './types';
 import { getAuthHeaders } from './lib/session';
@@ -38,6 +38,12 @@ import TermsPage from './components/pages/TermsPage';
 import PricingPage from './components/pages/PricingPage';
 import { GENERAL_FAQS } from './data/coursesData';
 
+// ── Android APK download ─────────────────────────────────────────────────────
+// Paste the hosted APK URL here (for example "/downloads/dma-academy.apk" or a
+// direct file-host download link). While it is empty the download banner shows
+// a disabled "coming soon" state instead of linking nowhere.
+const APK_DOWNLOAD_URL = '';
+
 export default function App() {
   // Global States loaded asynchronously from Express Server API
   const [courses, setCourses] = useState<Course[]>([]);
@@ -63,6 +69,15 @@ export default function App() {
   // PWA install prompt
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [appInstalled, setAppInstalled] = useState(false);
+
+  // Scroll-to-top affordance, revealed after the first screenful
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 420);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   useEffect(() => {
     const handler = (e: any) => { e.preventDefault(); setInstallPrompt(e); };
@@ -1035,23 +1050,33 @@ export default function App() {
                 Install App
               </button>
             )}
-            <a
-              href="https://www.pwabuilder.com/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-700 hover:border-blue-600/60 text-slate-300 hover:text-white text-xs font-bold transition-all"
-            >
-              <Download className="w-3.5 h-3.5" />
-              Generate APK
-            </a>
+            {APK_DOWNLOAD_URL ? (
+              <a
+                href={APK_DOWNLOAD_URL}
+                download
+                className="flex items-center gap-2 px-5 py-3 rounded-xl border border-blue-500/50 bg-blue-500/10 hover:bg-blue-600 text-blue-200 hover:text-white text-xs font-extrabold transition-all hover:-translate-y-0.5"
+                id="apk-download-btn"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Download APK
+              </a>
+            ) : (
+              <span
+                aria-disabled="true"
+                title="The APK download link will be added soon"
+                className="flex items-center gap-2 px-5 py-3 rounded-xl border border-slate-700 text-slate-500 text-xs font-bold cursor-not-allowed"
+              >
+                <Download className="w-3.5 h-3.5" />
+                APK link coming soon
+              </span>
+            )}
           </div>
         </div>
 
         <div className="max-w-5xl mx-auto mt-8 pt-6 border-t border-slate-800/60">
           <p className="text-[10px] text-slate-500 font-mono text-center leading-relaxed">
-            <span className="text-blue-500 font-bold">How to get the APK:</span> After deploying to Hostinger, visit{' '}
-            <a href="https://www.pwabuilder.com/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">pwabuilder.com</a>
-            {' '}→ enter your Hostinger URL → click <strong>Android</strong> → download the signed APK to share or sideload.
+            <span className="text-blue-500 font-bold">Android 7.0+:</span>{' '}
+            download the APK, open it on your device, and allow installs from this source when prompted. Your courses stay in sync with your academy account.
           </p>
         </div>
       </section>
@@ -1133,6 +1158,22 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {/* Scroll back to top */}
+      {showScrollTop && (
+        <button
+          onClick={() => {
+            const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+          }}
+          className="fixed bottom-24 right-4 sm:right-6 z-40 p-3 rounded-full glass-card-heavy border border-blue-500/30 text-blue-300 hover:text-white hover:bg-blue-600/80 hover:border-blue-400 shadow-[0_8px_30px_rgba(2,6,23,0.6)] transition-all duration-300 cursor-pointer"
+          aria-label="Scroll back to top"
+          title="Back to top"
+          id="scroll-to-top-btn"
+        >
+          <ArrowUp className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Authentication Login Dialog Modal */}
       {loginOpen && (

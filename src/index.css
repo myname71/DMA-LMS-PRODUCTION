@@ -159,6 +159,42 @@ h1, h2, h3, h4 {
   animation: float 5s ease-in-out infinite;
 }
 
+/* Drifting hero backdrop icons (smart factory / digital twin / supply chain). */
+@keyframes dmaIconDrift1 {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-3deg); }
+  50% { transform: translate3d(10px, -22px, 0) rotate(3deg); }
+}
+
+@keyframes dmaIconDrift2 {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(3deg); }
+  50% { transform: translate3d(-14px, 16px, 0) rotate(-2deg); }
+}
+
+@keyframes dmaIconDrift3 {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(-2deg); }
+  50% { transform: translate3d(16px, 12px, 0) rotate(4deg); }
+}
+
+.dma-icon-drift-1,
+.dma-icon-drift-2,
+.dma-icon-drift-3 {
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  will-change: transform;
+}
+
+.dma-icon-drift-1 { animation-name: dmaIconDrift1; }
+.dma-icon-drift-2 { animation-name: dmaIconDrift2; }
+.dma-icon-drift-3 { animation-name: dmaIconDrift3; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dma-icon-drift-1,
+  .dma-icon-drift-2,
+  .dma-icon-drift-3 {
+    animation: none;
+  }
+}
+
 /* Custom modern scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
